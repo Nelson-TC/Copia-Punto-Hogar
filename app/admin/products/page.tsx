@@ -2,11 +2,14 @@ import Link from 'next/link';
 import { prisma } from '../../../src/lib/prisma';
 import { getSession } from '../../../src/lib/auth';
 import { getUserPermissions } from '../../../src/lib/permissions';
+import AdminProductRowActions from '../../../components/AdminProductRowActions';
+import { marginPct, profitPerUnit } from '../../../src/lib/pricing';
 
 export const dynamic = 'force-dynamic';
 
-interface SearchParams { page?: string; per?: string; q?: string; active?: string }
+interface SearchParams { page?: string; per?: string; q?: string; active?: string; stock?: string }
 const DEFAULT_PER = 20; const MAX_PER = 100;
+const LOW_STOCK = 5; // desde esta cantidad hacia abajo se marca como "stock bajo"
 function parsePagination(sp: SearchParams) {
 	const page = Math.max(parseInt(sp.page || '1', 10) || 1, 1);
 	let per = parseInt(sp.per || String(DEFAULT_PER), 10) || DEFAULT_PER;
@@ -17,17 +20,21 @@ function parsePagination(sp: SearchParams) {
 export default async function AdminProductsPage({ searchParams }: { searchParams: SearchParams }) {
 	// Permissions server-side to conditionally render buttons/links
 	const session = await getSession();
-	let canCreate = false; let canUpdate = false;
+	let canCreate = false; let canUpdate = false; let canDelete = false;
 	if (session) {
 		const perms = await getUserPermissions(session.sub);
 		canCreate = perms.has('admin:access') || perms.has('product:create');
 		canUpdate = perms.has('admin:access') || perms.has('product:update');
+		canDelete = perms.has('admin:access') || perms.has('product:delete');
 	}
 	const { page, per } = parsePagination(searchParams);
 	const q = (searchParams.q || '').trim();
 	const activeParam = (searchParams.active || 'all').trim(); // 'true' | 'false' | 'all'
+	const stockParam = (searchParams.stock || 'all').trim(); // 'all' | 'out' | 'low'
 	const where: any = {};
 	if (activeParam && activeParam !== 'all') where.active = activeParam === 'true';
+	if (stockParam === 'out') where.stock = 0;
+	else if (stockParam === 'low') where.stock = { gt: 0, lte: LOW_STOCK };
 	if (q) {
 		where.AND = (where.AND || []).concat([
 			{ OR: [
@@ -77,6 +84,16 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
 						<option value="true">Activos</option>
 						<option value="false">Inactivos</option>
 					</select>
+					<select
+						name="stock"
+						defaultValue={['all','out','low'].includes(stockParam)? stockParam : 'all'}
+						className="px-3 py-2 rounded-md border border-neutral-300 bg-white text-sm"
+						aria-label="Inventario"
+					>
+						<option value="all">Todo el inventario</option>
+						<option value="low">Stock bajo (1-{LOW_STOCK})</option>
+						<option value="out">Agotados</option>
+					</select>
 					<button type="submit" className="px-4 py-2 text-sm font-semibold rounded bg-carrot text-nav hover:bg-carrot-dark">Aplicar</button>
 				</form>
 			</div>
@@ -87,42 +104,59 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
 							<th className="px-3 py-2 font-medium">Nombre</th>
 							<th className="px-3 py-2 font-medium">Categoría</th>
 							<th className="px-3 py-2 font-medium">Precio</th>
-							<th className="px-3 py-2 font-medium">Creado</th>
+							<th className="px-3 py-2 font-medium">Costo</th>
+							<th className="px-3 py-2 font-medium">Margen</th>
+							<th className="px-3 py-2 font-medium">Stock</th>
+							<th className="px-3 py-2 font-medium">Estado</th>
 							<th className="px-3 py-2" />
 						</tr>
 					</thead>
 					<tbody className="divide-y">
 						{products.map((p: any) => (
-							<tr key={p.id} className="hover:bg-neutral-50">
+							<tr key={p.id} className="hover:bg-neutral-50 align-top">
 								<td className="px-3 py-2 font-medium text-neutral-800 max-w-[260px] truncate" title={p.name}>{p.name}</td>
 								<td className="px-3 py-2 text-neutral-600">{p.category?.name}</td>
-								<td className="px-3 py-2 font-mono text-xs text-neutral-700">Q{p.price?.toString?.() ?? p.price}</td>
-								<td className="px-3 py-2 text-xs text-neutral-600 whitespace-nowrap">{new Date(p.createdAt).toLocaleDateString()}</td>
+								<td className="px-3 py-2 font-mono text-xs text-neutral-700">Q{Number(p.price).toFixed(2)}</td>
+								<td className="px-3 py-2 font-mono text-xs text-neutral-700">{Number(p.costPrice) > 0 ? `Q${Number(p.costPrice).toFixed(2)}` : <span className="text-amber-600">Sin costo</span>}</td>
+								<td className="px-3 py-2 text-xs whitespace-nowrap">
+									{Number(p.costPrice) > 0 ? (() => {
+										const margin = marginPct(Number(p.price), Number(p.costPrice));
+										const profit = profitPerUnit(Number(p.price), Number(p.costPrice));
+										return <span className={`font-semibold ${profit < 0 ? 'text-red-600' : 'text-green-700'}`} title={`Ganancia por unidad: Q${profit.toFixed(2)}`}>{margin}%</span>;
+									})() : <span className="text-neutral-400">—</span>}
+								</td>
+								<td className="px-3 py-2 whitespace-nowrap">
+									<span className={`px-2 py-0.5 text-[11px] rounded-full font-semibold ${p.stock === 0 ? 'bg-red-100 text-red-700' : p.stock <= LOW_STOCK ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-700'}`}>
+										{p.stock === 0 ? 'Agotado' : p.stock <= LOW_STOCK ? `Bajo · ${p.stock}` : p.stock}
+									</span>
+								</td>
+								<td className="px-3 py-2"><span className={`px-2 py-0.5 text-[11px] rounded-full font-medium ${p.active ? 'bg-green-100 text-green-700' : 'bg-neutral-200 text-neutral-600'}`}>{p.active ? 'Activo' : 'Inactivo'}</span></td>
 								<td className="px-3 py-2 text-right">
-									{canUpdate && <Link href={`/admin/products/${p.id}`} className="text-xs font-medium text-carrot hover:underline">Editar</Link>}
+									<AdminProductRowActions id={p.id} name={p.name} stock={p.stock} canUpdate={canUpdate} canDelete={canDelete} />
 								</td>
 							</tr>
 						))}
 						{products.length === 0 && (
-							<tr><td colSpan={5} className="px-4 py-8 text-sm text-center text-neutral-500">Sin productos</td></tr>
+							<tr><td colSpan={8} className="px-4 py-8 text-sm text-center text-neutral-500">Sin productos</td></tr>
 						)}
 					</tbody>
 				</table>
 			</div>
-			{totalPages > 1 && <Pagination base="/admin/products" current={currentPage} totalPages={totalPages} per={per} q={q} active={activeParam} />}
-			<PerPageSelector base="/admin/products" per={per} q={q} active={activeParam} />
+			{totalPages > 1 && <Pagination base="/admin/products" current={currentPage} totalPages={totalPages} per={per} q={q} active={activeParam} stock={stockParam} />}
+			<PerPageSelector base="/admin/products" per={per} q={q} active={activeParam} stock={stockParam} />
 		</div>
 	);
 }
 
-interface PaginationProps { base: string; current: number; totalPages: number; per: number; q?: string; active?: string }
-function Pagination({ base, current, totalPages, per, q, active }: PaginationProps) {
+interface PaginationProps { base: string; current: number; totalPages: number; per: number; q?: string; active?: string; stock?: string }
+function Pagination({ base, current, totalPages, per, q, active, stock }: PaginationProps) {
 	function link(p: number) {
 		const params = new URLSearchParams();
 		if (p > 1) params.set('page', String(p));
 		if (per !== DEFAULT_PER) params.set('per', String(per));
 		if (q) params.set('q', q);
 		if (active && active !== 'all') params.set('active', active);
+		if (stock && stock !== 'all') params.set('stock', stock);
 		const qs = params.toString(); return qs ? `${base}?${qs}` : base;
 	}
 	const window = 2; const pages: number[] = [];
@@ -141,7 +175,7 @@ function Pagination({ base, current, totalPages, per, q, active }: PaginationPro
 	);
 }
 
-function PerPageSelector({ base, per, q, active }: { base: string; per: number; q?: string; active?: string }) {
+function PerPageSelector({ base, per, q, active, stock }: { base: string; per: number; q?: string; active?: string; stock?: string }) {
 	const options = [10,20,50,100];
 	return (
 		<div className="text-[11px] text-neutral-500 flex items-center gap-1 pt-2 flex-wrap">Filas por página:
@@ -150,6 +184,7 @@ function PerPageSelector({ base, per, q, active }: { base: string; per: number; 
 				if (o !== DEFAULT_PER) params.set('per', String(o));
 				if (q) params.set('q', q);
 				if (active && active !== 'all') params.set('active', active);
+				if (stock && stock !== 'all') params.set('stock', stock);
 				const href = `${base}?${params.toString()}`.replace(/\?$/, '');
 				return <a key={o} href={href} className={`px-2 py-1 rounded border ${o===per? 'bg-carrot text-nav border-carrot font-semibold':'border-neutral-300 hover:bg-neutral-100'}`}>{o}</a>;
 			})}

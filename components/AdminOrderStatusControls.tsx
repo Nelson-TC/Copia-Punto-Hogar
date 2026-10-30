@@ -26,8 +26,8 @@ export function AdminOrderStatusControls({ orderId, current, canManage }: Props)
         body: JSON.stringify({ status: next })
       });
       if (!res.ok) {
-        console.error('Error updating status', await res.text());
-        alert('No se pudo actualizar el estado');
+        const data = await res.json().catch(() => null);
+        alert(data?.error && data.code !== data.error ? data.error : 'No se pudo actualizar el estado');
         return;
       }
       startTransition(() => router.refresh());
@@ -53,7 +53,7 @@ export function AdminOrderStatusControls({ orderId, current, canManage }: Props)
           );
         })}
       </div>
-      <p className="text-[11px] text-neutral-500 leading-snug">Los cambios se registran en el log de auditoría.</p>
+      <p className="text-[11px] text-neutral-500 leading-snug">Los cambios se registran en el log de auditoría. Al cancelar un pedido se devuelve el inventario; un pedido cancelado ya no puede cambiar de estado.</p>
     </div>
   );
 }

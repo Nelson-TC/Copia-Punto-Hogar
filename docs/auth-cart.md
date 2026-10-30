@@ -31,10 +31,17 @@
 4. Respuesta incluye carrito enriquecido; helper emite `cart:updated`.
 5. Navbar escucha evento y refresca badge.
 
-### Órdenes sin Login
-- Endpoint `/api/orders` lee cookie `cart` y valida campos de checkout.
-- Si el usuario está logeado, asocia `userId`; si no, queda `null`.
-- Limpia carrito tras creación.
+### Pedidos (requieren sesión)
+- Endpoint `/api/orders` exige sesión iniciada (`401` si no la hay), lee la cookie `cart` y valida los campos de checkout (`422`).
+- Todo ocurre en **una transacción de Prisma**: por cada producto se hace un descuento condicional
+  (`stock >= cantidad`); si alguno no alcanza se revierte todo y se responde `409` con la lista de productos sin existencias.
+- El precio se toma de la base de datos en ese momento (precio vigente) y se guarda en `OrderItem.unitPrice`.
+- El pedido queda asociado al usuario (`userId`) y se limpia el carrito.
+- El checkout (`/checkout`) redirige a `/login?next=/checkout` si no hay sesión.
+
+### Validación de stock en el carrito
+- `POST /api/cart` y `PUT /api/cart` rechazan (`409`) cantidades mayores al stock y productos agotados, y (`404`) productos inactivos.
+- `GET /api/cart` devuelve `stock` por línea y `issues[]` con los productos que ya no alcanzan (el carrito bloquea el pago hasta ajustarlos).
 
 ## Migración Futura a Carrito Persistente
 Pasos sugeridos:
@@ -55,6 +62,7 @@ Pasos sugeridos:
 | `auth:changed` | AuthProvider/logout | Re-hidratar sesión y mostrar/ocultar links |
 
 ## Errores Típicos
-- `No se pudo agregar`: producto inexistente -> revisar seed/migraciones.
+- `El producto no está disponible`: producto inexistente o inactivo -> revisar seed/migraciones.
+- `Solo hay N unidades disponibles de ...`: la cantidad supera el stock; ajustar el carrito.
 - `Limite total superado`: indicar al usuario reducir cantidades.
 - `Carrito vacío` al crear orden: cookie reseteada o expiró -> pedir volver a agregar.

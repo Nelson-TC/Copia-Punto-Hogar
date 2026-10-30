@@ -3,12 +3,13 @@ import Link from 'next/link';
 import { formatCurrency } from '@/lib/format';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth';
+import { ORDER_STATUS_BADGE, orderStatusLabel } from '@/lib/order-status';
 
 export const dynamic = 'force-dynamic';
 
 export default async function MyOrdersPage() {
   const session = await getSession();
-  if (!session) redirect('/login');
+  if (!session) redirect('/login?next=/account/orders');
   const userId = session.sub;
 
   // @ts-ignore prisma types stale
@@ -42,11 +43,15 @@ export default async function MyOrdersPage() {
               return (
                 <li key={o.id} className="flex flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:gap-6">
                   <div className="flex-1 min-w-0 space-y-1">
-                    <div className="font-medium text-nav">Pedido #{smallId}</div>
+                    <div className="flex items-center gap-2 font-medium text-nav">
+                      Pedido #{smallId}
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${ORDER_STATUS_BADGE[o.status] || 'bg-neutral-100 text-neutral-700'}`}>{orderStatusLabel(o.status)}</span>
+                    </div>
                     <div className="text-[11px] text-neutral-500 flex flex-wrap gap-x-3 gap-y-1">
                       <span>{o.createdAt.toISOString().slice(0,10)}</span>
-                      <span>{itemsCount} {itemsCount === 1 ? 'item' : 'items'}</span>
+                      <span>{itemsCount} {itemsCount === 1 ? 'producto' : 'productos'}</span>
                     </div>
+                    <p className="text-[11px] text-neutral-500 line-clamp-1">{o.items.map((i:any)=> `${i.quantity}× ${i.name}`).join(', ')}</p>
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="font-semibold tabular-nums text-neutral-700">{formatCurrency(Number(o.total))}</div>

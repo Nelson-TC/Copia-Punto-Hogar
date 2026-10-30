@@ -25,7 +25,7 @@ export function RevenueOrdersChart({ data }: { data: { date: string; revenue: nu
               <XAxis dataKey="date" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} width={60} />
               <Tooltip formatter={(v:any)=> mode==='revenue'? formatCurrency(Number(v)) : v } labelFormatter={(l:any)=> `Fecha: ${l}`} />
-              <Line type="monotone" strokeWidth={2} dataKey={mode} stroke={mode==='revenue'? '#FF8A3D':'#111827'} dot={false} />
+              <Line type="monotone" strokeWidth={2} dataKey={mode} stroke={mode==='revenue'? '#F58220':'#111827'} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -138,7 +138,7 @@ export function RevenueUnitsBarChart({ data }: { data: { date: string; revenue: 
               <YAxis yAxisId="right" orientation="right" tick={{ fontSize:10 }} width={40} />
               <Tooltip formatter={(v:any, key:any)=> key==='revenue'? formatCurrency(Number(v)) : v } labelFormatter={(l:any)=> `Fecha: ${l}`} />
               <Legend wrapperStyle={{ fontSize: 10 }} />
-              <Bar yAxisId="left" dataKey="revenue" name="Ingresos" fill="#FF8A3D" radius={[3,3,0,0]} />
+              <Bar yAxisId="left" dataKey="revenue" name="Ingresos" fill="#F58220" radius={[3,3,0,0]} />
               <Bar yAxisId="right" dataKey="units" name="Unidades" fill="#111827" radius={[3,3,0,0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -193,7 +193,7 @@ export function CumulativeRevenueChart({ data }: { data: { date: string; revenue
               <XAxis dataKey="date" tick={{ fontSize: 10 }} hide={cum.length>25} />
               <YAxis tick={{ fontSize: 10 }} width={60} />
               <Tooltip formatter={(v:any)=> formatCurrency(Number(v))} labelFormatter={(l:any)=> `Fecha: ${l}`} />
-              <Area type="monotone" dataKey="cumulative" stroke="#FF8A3D" fill="#FF8A3D" fillOpacity={0.25} />
+              <Area type="monotone" dataKey="cumulative" stroke="#F58220" fill="#F58220" fillOpacity={0.25} />
             </AreaChart>
           </ResponsiveContainer>
         )}
@@ -271,7 +271,7 @@ export function TopProductsBarChart({ products }: { products: { name: string; re
               <XAxis type="number" tick={{ fontSize: 10 }} domain={[0, 'dataMax + 8']} tickFormatter={(v)=> (v>1000? (v/1000).toFixed(1)+'k': v)} />
               <YAxis dataKey="name" type="category" width={yWidth} tick={{ fontSize: 10 }} />
               <Tooltip formatter={(v:any)=> formatCurrency(Number(v))} />
-              <Bar dataKey="revenue" name="Ingresos" fill="#FF8A3D" radius={[0,3,3,0]} />
+              <Bar dataKey="revenue" name="Ingresos" fill="#F58220" radius={[0,3,3,0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -315,7 +315,7 @@ export function TopProductsParetoChart({ products }: { products: { name: string;
               <Tooltip formatter={(v:any, key:any, p:any)=> key==='cumulative'? (Number(v).toFixed(1)+'%'): formatCurrency(Number(v))} />
               <Legend wrapperStyle={{ fontSize: 10 }} />
               <ReferenceLine yAxisId="right" y={80} stroke="#EF4444" strokeDasharray="4 3" />
-              <Bar yAxisId="left" dataKey="revenue" name="Ingresos" fill="#FF8A3D" radius={[3,3,0,0]} />
+              <Bar yAxisId="left" dataKey="revenue" name="Ingresos" fill="#F58220" radius={[3,3,0,0]} />
               <Line yAxisId="right" type="monotone" dataKey="cumulative" name="% acumulado" stroke="#111827" strokeWidth={2} dot={{ r: 3 }} />
             </ComposedChart>
           </ResponsiveContainer>

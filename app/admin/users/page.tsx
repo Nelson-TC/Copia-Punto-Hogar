@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma } from '../../../src/lib/prisma';
 import { getSession } from '../../../src/lib/auth';
 import { getUserPermissions } from '../../../src/lib/permissions';
+import AdminUserRowActions from '../../../components/AdminUserRowActions';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,11 +17,12 @@ function parsePagination(sp: SearchParams) {
 
 export default async function AdminUsersPage({ searchParams }: { searchParams: SearchParams }) {
 	const session = await getSession();
-	let canCreate = false; let canUpdate = false;
+	let canCreate = false; let canUpdate = false; let canDelete = false;
 	if (session) {
 		const perms = await getUserPermissions(session.sub);
 		canCreate = perms.has('admin:access') || perms.has('user:create');
 		canUpdate = perms.has('admin:access') || perms.has('user:update');
+		canDelete = perms.has('admin:access') || perms.has('user:delete');
 	}
 	const { page, per } = parsePagination(searchParams);
 	const total = await prisma.user.count();
@@ -29,7 +31,8 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
 	const users = await prisma.user.findMany({
 		orderBy: { createdAt: 'desc' },
 		skip: (currentPage - 1) * per,
-		take: per
+		take: per,
+		include: { userRoles: { include: { role: { select: { label: true, name: true } } } } }
 	});
 	const start = total === 0 ? 0 : (currentPage - 1) * per + 1;
 	const end = Math.min(total, currentPage * per);
@@ -48,7 +51,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
 						<tr>
 							<th className="px-3 py-2 font-medium">Email</th>
 							<th className="px-3 py-2 font-medium">Nombre</th>
-							<th className="px-3 py-2 font-medium">Creado</th>
+							<th className="px-3 py-2 font-medium">Roles</th>
 							<th className="px-3 py-2" />
 						</tr>
 					</thead>
@@ -57,8 +60,8 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
 							<tr key={u.id} className="hover:bg-neutral-50">
 								<td className="px-3 py-2 font-medium text-neutral-800 max-w-[240px] truncate" title={u.email}>{u.email}</td>
 								<td className="px-3 py-2 text-neutral-600">{u.name}</td>
-								<td className="px-3 py-2 text-xs text-neutral-600 whitespace-nowrap">{new Date(u.createdAt).toLocaleDateString()}</td>
-								<td className="px-3 py-2 text-right">{canUpdate && <Link href={`/admin/users/${u.id}`} className="text-xs font-medium text-carrot hover:underline">Editar</Link>}</td>
+								<td className="px-3 py-2 text-xs whitespace-nowrap">{u.userRoles.length === 0 ? <span className="text-neutral-400">Cliente</span> : u.userRoles.map((r: any) => <span key={r.roleId} className="inline-block px-2 py-0.5 mr-1 text-[11px] font-medium rounded-full bg-nav/10 text-nav">{r.role.label || r.role.name}</span>)}</td>
+								<td className="px-3 py-2 text-right"><AdminUserRowActions id={u.id} email={u.email} isSelf={u.id === session?.sub} canUpdate={canUpdate} canDelete={canDelete} /></td>
 							</tr>
 						))}
 						{users.length === 0 && (

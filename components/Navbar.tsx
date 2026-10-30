@@ -159,7 +159,8 @@ export function NavBar() {
               <i className='bx bxs-category-alt text-[1.5rem]'></i>
           </button>
           <Link href="/" className="flex items-center gap-2 text-sm font-semibold text-white">
-            <Image src="/images/transparentisotype.png" alt="ConejoMalo" width={38} height={38} />
+            <span className="flex items-center justify-center bg-white rounded-lg shadow-sm h-10 w-11"><Image src="/images/logo-mark.webp" alt="Punto Hogar" width={34} height={29} priority /></span>
+            <span className="hidden text-base font-bold tracking-tight sm:inline">Punto <span className="text-carrot">Hogar</span></span>
           </Link>
           {/* Overlay moved to portal to avoid being constrained by any transformed ancestor */}
           {/* (Portal is rendered at end of body; see below) */}

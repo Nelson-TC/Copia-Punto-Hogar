@@ -1,7 +1,10 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
-import { getCurrentUser } from '@/lib/auth-server';
+import { getSession } from '@/lib/auth';
+import { serverErrorResponse } from '@/lib/db-errors';
+
+export const dynamic = 'force-dynamic';
 
 const CART_COOKIE = 'cart';
 
@@ -10,7 +13,9 @@ function readCart(): { items: { productId: string; qty: number }[] } {
 	if (!raw) return { items: [] };
 	try {
 		const parsed = JSON.parse(raw);
-		if (Array.isArray(parsed.items)) return { items: parsed.items.filter((i: any) => i && i.productId && i.qty > 0) };
+		if (Array.isArray(parsed.items)) {
+			return { items: parsed.items.filter((i: any) => i && typeof i.productId === 'string' && Number.isInteger(i.qty) && i.qty > 0) };
+		}
 		return { items: [] };
 	} catch { return { items: [] }; }
 }
@@ -19,58 +24,112 @@ function clearCart() {
 	cookies().set(CART_COOKIE, JSON.stringify({ items: [] }), { path: '/', httpOnly: false, sameSite: 'lax' });
 }
 
+function json(body: unknown, status: number) {
+	return NextResponse.json(body, { status });
+}
+
+/** Se lanza dentro de la transacción para revertirla completa cuando falta inventario. */
+class OutOfStockError extends Error {
+	items: { productId: string; name: string; available: number; requested: number }[];
+	constructor(items: OutOfStockError['items']) {
+		super('OUT_OF_STOCK');
+		this.items = items;
+	}
+}
+
+// POST /api/orders
+// Registra el pedido del cliente autenticado y descuenta el inventario en UNA sola transacción:
+// si algún producto no tiene existencias suficientes no se crea el pedido ni se descuenta nada.
 export async function POST(req: NextRequest) {
 	try {
-		const body = await req.json().catch(()=>null) as any;
-		const errors: Record<string,string> = {};
-		function reqField(field: string, min=1) {
+		const session = await getSession();
+		if (!session?.sub) return json({ error: 'Debes iniciar sesión para confirmar un pedido.', code: 'UNAUTHENTICATED' }, 401);
+
+		const body = await req.json().catch(() => null) as any;
+		const errors: Record<string, string> = {};
+		function reqField(field: string, min = 1) {
 			const v = body?.[field];
-			if (typeof v !== 'string' || v.trim().length < min) errors[field] = `Requerido (min ${min})`;
-			return v as string | undefined;
+			if (typeof v !== 'string' || v.trim().length < min) errors[field] = `Requerido (mínimo ${min} caracteres)`;
+			return typeof v === 'string' ? v.trim() : undefined;
 		}
 		const customer = reqField('customer', 2);
 		const email = reqField('email', 5);
 		const phone = reqField('phone', 5);
 		const address = reqField('address', 5);
-		// Validaciones específicas
-		if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Email inválido';
+		if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Correo electrónico inválido';
 		if (phone && !/^[+0-9 ()-]{5,}$/.test(phone)) errors.phone = 'Teléfono inválido';
-		if (Object.keys(errors).length) return new Response(JSON.stringify({ error: 'Validación', fields: errors }), { status: 422 });
+		if (Object.keys(errors).length) return json({ error: 'Revisa los datos de envío.', code: 'VALIDATION', fields: errors }, 422);
+
+		const user = await prisma.user.findUnique({ where: { id: session.sub }, select: { id: true } });
+		if (!user) return json({ error: 'Tu sesión ya no es válida. Inicia sesión nuevamente.', code: 'UNAUTHENTICATED' }, 401);
+
+		// Cantidades por producto (si el mismo producto viniera repetido se acumulan).
 		const cart = readCart();
-		if (cart.items.length === 0) return new Response(JSON.stringify({ error: 'Carrito vacío' }), { status: 400 });
-		const products = await prisma.product.findMany({ where: { id: { in: cart.items.map(i => i.productId) } }, select: { id: true, price: true, name: true, slug: true } });
-		if (products.length === 0) return new Response(JSON.stringify({ error: 'Productos no encontrados' }), { status: 400 });
-		const map: Map<string, { id: string; price: any; name: string; slug: string }> = new Map(products.map((p: any) => [p.id, p]));
-		const orderItemsData = cart.items
-			.filter(ci => map.has(ci.productId))
-			.map(ci => {
-				const p = map.get(ci.productId)!;
-				const unitPrice = Number(p.price);
-				return { productId: ci.productId, quantity: ci.qty, unitPrice, name: p.name, slug: p.slug };
+		const wanted = new Map<string, number>();
+		for (const i of cart.items) wanted.set(i.productId, (wanted.get(i.productId) ?? 0) + i.qty);
+		if (wanted.size === 0) return json({ error: 'Tu carrito está vacío.', code: 'EMPTY_CART' }, 400);
+
+		const order = await prisma.$transaction(async (tx) => {
+			const products = await tx.product.findMany({
+				where: { id: { in: Array.from(wanted.keys()) } },
+				select: { id: true, name: true, slug: true, price: true, costPrice: true, active: true, stock: true }
 			});
-		if (orderItemsData.length === 0) return new Response(JSON.stringify({ error: 'Sin items válidos' }), { status: 400 });
-		const subtotal = orderItemsData.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-		const total = subtotal; // impuestos / envio futuros
-		// Usuario autenticado (si existe cookie auth_user_id)
-		const currentUser = await getCurrentUser();
-		const userId = currentUser?.id;
-		// @ts-ignore prisma types stale - delegate exists at runtime
-		const order = await prisma.order.create({
-			data: {
-				customer: customer!,
-				email: email!,
-				address: address!,
-				phone: phone!,
-				subtotal,
-				total,
-				userId,
-				items: { create: orderItemsData.map(i => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice, name: i.name, slug: i.slug })) }
-			},
-			include: { items: true }
-		});
+			const byId = new Map(products.map(p => [p.id, p]));
+			const problems: OutOfStockError['items'] = [];
+			const lines: { productId: string; name: string; slug: string; unitPrice: number; unitCost: number; quantity: number }[] = [];
+
+			for (const [productId, quantity] of Array.from(wanted.entries())) {
+				const p = byId.get(productId);
+				if (!p || !p.active) {
+					problems.push({ productId, name: p?.name ?? 'Producto no disponible', available: 0, requested: quantity });
+					continue;
+				}
+				// Descuento condicional: solo se aplica si todavía hay existencias suficientes.
+				// Así dos clientes comprando al mismo tiempo nunca dejan el stock en negativo.
+				const updated = await tx.product.updateMany({
+					where: { id: productId, active: true, stock: { gte: quantity } },
+					data: { stock: { decrement: quantity } }
+				});
+				if (updated.count === 0) {
+					const fresh = await tx.product.findUnique({ where: { id: productId }, select: { stock: true } });
+					problems.push({ productId, name: p.name, available: fresh?.stock ?? 0, requested: quantity });
+					continue;
+				}
+				// El precio aplicado es el vigente al momento de la compra.
+				// y el costo vigente, para poder calcular la ganancia real aunque el costo cambie después.
+				lines.push({ productId, name: p.name, slug: p.slug, unitPrice: Number(p.price), unitCost: Number(p.costPrice), quantity });
+			}
+			if (problems.length) throw new OutOfStockError(problems);
+
+			const subtotal = Number(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0).toFixed(2));
+			const total = subtotal; // los precios publicados ya incluyen IVA
+			return tx.order.create({
+				data: {
+					customer: customer!,
+					email: email!,
+					address: address!,
+					phone: phone!,
+					subtotal,
+					total,
+					userId: user.id,
+					items: { create: lines }
+				},
+				include: { items: true }
+			});
+		}, { timeout: 15000, maxWait: 10000 });
+
 		clearCart();
-		return new Response(JSON.stringify(order), { status: 201, headers: { 'Content-Type': 'application/json' } });
+		// El costo es información interna: no se incluye en la respuesta al cliente.
+		return json({ ...order, items: order.items.map(({ unitCost: _c, ...item }) => item) }, 201);
 	} catch (e: any) {
-		return new Response(JSON.stringify({ error: 'No se pudo crear orden', detalle: e.message }), { status: 500 });
+		if (e instanceof OutOfStockError) {
+			const detail = e.items.map(i => i.available === 0 ? `"${i.name}" está agotado` : `de "${i.name}" solo hay ${i.available}`).join('; ');
+			return json({
+				error: `No se pudo confirmar el pedido: ${detail}. No se descontó inventario; ajusta tu carrito e intenta de nuevo.`,
+				code: 'OUT_OF_STOCK',
+				items: e.items
+			}, 409);
+		}
+		return serverErrorResponse('orders.POST', e, 'No se pudo crear el pedido. Intenta más tarde.');
 	}
 }

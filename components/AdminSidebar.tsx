@@ -54,7 +54,7 @@ export function AdminSidebar() {
     <>
       <button
         onClick={()=>setOpen(o=>!o)}
-        className="fixed z-40 flex items-center justify-center w-full h-10 text-sm left-0 font-medium text-white transition rounded-b-md shadow md:hidden top-[6.5rem] bg-nav/80 backdrop-blur-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-carrot"
+        className="fixed z-40 flex items-center justify-center w-full h-10 text-sm left-0 font-medium text-white transition rounded-b-md shadow md:hidden top-14 bg-nav/80 backdrop-blur-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-carrot"
         aria-expanded={open}
         aria-controls="admin-sidebar"
         aria-label={open? 'Cerrar menú de administración':'Abrir menú de administración'}

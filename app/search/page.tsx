@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { prisma } from '../../src/lib/prisma';
 import { cache } from 'react';
 import SearchToolbar from '../../components/SearchToolbar';
+import { plainProduct } from '../../src/lib/serialize';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,7 +100,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
     <div className="max-w-6xl px-4 py-8 mx-auto space-y-8 md:px-6">
       <header className="flex flex-col gap-4 md:items-start md:flex-row md:justify-between">
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold tracking-tight">Resultados para "{q}"</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Resultados para &quot;{q}&quot;</h1>
           <p className="text-sm text-neutral-600">{total === 0 ? 'Sin coincidencias.' : <>Mostrando <span className="font-medium">{start}-{end}</span> de <span className="font-medium">{total}</span> producto{total!==1 && 's'}.</>}</p>
         </div>
         <SearchToolbar
@@ -127,7 +128,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
           {products.map(p => (
             <ProductCard
               key={p.id}
-              product={p as any}
+              product={plainProduct(p) as any}
               showDescription={false}
               variant="compact"
               highlightedName={highlight(p.name)}

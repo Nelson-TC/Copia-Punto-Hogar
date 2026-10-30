@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: ConejoMalo API
+  title: Punto Hogar API
   version: '1.0.0'
   description: |
     API pública y de administración para la tienda. Autenticación vía cookie `session`.
@@ -158,6 +158,7 @@ components:
         slug: { type: string }
         description: { type: string, nullable: true }
         price: { oneOf: [ { type: string }, { type: number } ] }
+        stock: { type: integer, minimum: 0, description: 'Existencias disponibles. Con 0 el producto está agotado y no puede comprarse.' }
         imageUrl: { type: string, nullable: true }
         categoryId: { type: string }
         active: { type: boolean }
@@ -625,7 +626,9 @@ paths:
               required: [name, price, categoryId]
               properties:
                 name: { type: string }
-                price: { oneOf: [ { type: number }, { type: string } ] }
+                price: { oneOf: [ { type: number }, { type: string } ], description: 'Mayor a 0' }
+                costPrice: { type: number, minimum: 0, description: 'Costo, ya con IVA (>= 0; 0 = sin costo registrado). Información interna: la API pública no lo devuelve.' }
+                stock: { type: integer, minimum: 0, description: 'Existencias (entero >= 0). Si se omite se asume 0.' }
                 description: { type: string, nullable: true }
                 categoryId: { type: string }
                 active: { type: boolean }
@@ -636,6 +639,8 @@ paths:
               properties:
                 name: { type: string }
                 price: { type: string }
+                costPrice: { type: string, description: 'Costo, ya con IVA (>= 0)' }
+                stock: { type: string, description: 'Entero >= 0' }
                 description: { type: string }
                 categoryId: { type: string }
                 active: { type: string, enum: ["true","false"] }
@@ -671,7 +676,9 @@ paths:
               required: [name, price, categoryId]
               properties:
                 name: { type: string }
-                price: { oneOf: [ { type: number }, { type: string } ] }
+                price: { oneOf: [ { type: number }, { type: string } ], description: 'Mayor a 0' }
+                costPrice: { type: number, minimum: 0, description: 'Costo, ya con IVA (>= 0; 0 = sin costo registrado). Información interna: la API pública no lo devuelve.' }
+                stock: { type: integer, minimum: 0, description: 'Existencias (entero >= 0). Si se omite se asume 0.' }
                 description: { type: string, nullable: true }
                 categoryId: { type: string }
                 active: { type: boolean }
@@ -683,6 +690,8 @@ paths:
               properties:
                 name: { type: string }
                 price: { type: string }
+                costPrice: { type: string, description: 'Costo, ya con IVA (>= 0)' }
+                stock: { type: string, description: 'Entero >= 0' }
                 description: { type: string }
                 categoryId: { type: string }
                 active: { type: string, enum: ["true","false"] }

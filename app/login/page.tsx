@@ -2,7 +2,7 @@
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../../components/AuthProvider';
-import Image from 'next/image';
+import { fetchWithTimeout } from '../../src/lib/http';
 
 function LoginInner() {
 	const [email, setEmail] = useState('');
@@ -19,12 +19,18 @@ function LoginInner() {
 		setLoading(true);
 		setError(null);
 		try {
-			const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
-			const data = await res.json();
-			if (!res.ok) throw new Error(data?.error || 'Error');
+			const res = await fetchWithTimeout('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+			const data = await res.json().catch(() => null);
+			if (!res.ok) throw new Error(data?.error || 'No se pudo iniciar sesión');
 			await refresh();
-			const next = sp?.get('next') || '/account';
-			router.replace(next);
+			// Solo rutas internas (evita redirecciones abiertas): /algo pero nunca //host
+			const requested = sp?.get('next') || sp?.get('from') || '';
+			const safeNext = requested.startsWith('/') && !requested.startsWith('//') ? requested : '';
+			if (safeNext) { router.replace(safeNext); return; }
+			// Sin destino explícito se redirige según el rol: administradores al panel, clientes a su cuenta.
+			const me = await fetchWithTimeout('/api/auth/me', { cache: 'no-store' }).then(r => r.json()).catch(() => null);
+			const perms: string[] = Array.isArray(me?.permissions) ? me.permissions : [];
+			router.replace(perms.includes('admin:access') || perms.includes('dashboard:access') ? '/admin' : '/account');
 		} catch (err: any) {
 			setError(err.message || 'No se pudo iniciar sesión');
 		} finally { setLoading(false); }

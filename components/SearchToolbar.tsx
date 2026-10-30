@@ -26,7 +26,7 @@ export default function SearchToolbar({ q, sort, per, cat, categories, base = '/
 
   function update(next: Partial<{ sort: string; per: number|string; cat: string; page?: number; priceMin?: number|string; priceMax?: number|string }>) {
     const sp = new URLSearchParams(params?.toString() || '');
-    sp.set('q', q);
+    if (q) sp.set('q', q); else sp.delete('q');
     if (next.sort) sp.set('sort', next.sort); else sp.set('sort', sort);
     if (next.per) sp.set('per', String(next.per)); else sp.set('per', String(per));
     if (next.cat !== undefined) {
@@ -44,9 +44,9 @@ export default function SearchToolbar({ q, sort, per, cat, categories, base = '/
 
   function resetFilters() {
     const sp = new URLSearchParams();
-    sp.set('q', q);
-    const url = `${base}?${sp.toString()}`;
-    startTransition(()=> router.push(url));
+    if (q) sp.set('q', q);
+    const qs = sp.toString();
+    startTransition(()=> router.push(qs ? `${base}?${qs}` : base));
   }
 
   function onRangeChange(newMin: number, newMax: number) {
@@ -139,8 +139,9 @@ function PriceRange({ minBound, maxBound, valueMin, valueMax, onChange }: PriceR
     const v = Number(e.target.value);
     onChange(displayMin, Math.max(v, displayMin));
   }
-  const percentMin = ((displayMin - min)/(max - min))*100;
-  const percentMax = ((displayMax - min)/(max - min))*100;
+  const span = max - min || 1; // evita división entre cero si todos los productos cuestan lo mismo
+  const percentMin = ((displayMin - min)/span)*100;
+  const percentMax = ((displayMax - min)/span)*100;
   return (
     <div className="flex flex-col gap-1 min-w-[210px]">
       <div className="flex items-center justify-between text-[10px] font-medium text-neutral-500">

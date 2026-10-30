@@ -19,8 +19,10 @@ const PERMISSIONS = [
 
 const ROLES = {
   admin: PERMISSIONS,
+  // Gestor de tienda: opera catálogo, inventario y pedidos, pero NO administra usuarios ni roles
+  // (regla de negocio: solo el rol Administrador gestiona usuarios; "admin:access" es acceso total).
   manager: [
-    'admin:access','dashboard:access',
+    'dashboard:access',
     'product:read','product:create','product:update','product:delete',
     'category:read','category:create','category:update','category:delete',
     'order:read','order:manageStatus',

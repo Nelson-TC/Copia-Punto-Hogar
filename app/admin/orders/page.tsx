@@ -105,10 +105,10 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
 				</form>
 			</header>
 
-			<div className="text-xs text-neutral-500">Mostrando página {page} de {totalPages} — estado: {statusLabels[status]}{q && <> — búsqueda: "{q}"</>}.</div>
+			<div className="text-xs text-neutral-500">Mostrando página {page} de {totalPages} — estado: {statusLabels[status]}{q && <> — búsqueda: &quot;{q}&quot;</>}.</div>
 
 			{orders.length === 0 && (
-				<p className="text-sm text-neutral-600">No hay pedidos {q && <>para la búsqueda "{q}"</>}.</p>
+				<p className="text-sm text-neutral-600">No hay pedidos {q && <>para la búsqueda &quot;{q}&quot;</>}.</p>
 			)}
 
 			{/* Mobile cards */}

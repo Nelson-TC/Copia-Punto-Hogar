@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../src/lib/prisma';
 import { requirePermission } from '../../../../../src/lib/permissions';
 import { logAudit } from '../../../../../src/lib/audit';
+import { serverErrorResponse } from '../../../../../src/lib/db-errors';
 
 function err(status: number, code: string, message?: string) { return NextResponse.json({ error: message || code, code }, { status }); }
 
@@ -52,7 +53,20 @@ export async function PATCH(req: Request, { params }: Params) {
     const existing = await prisma.order.findUnique({ where: { id: params.id }, select: { status: true } });
     if (!existing) return err(404,'NOT_FOUND');
     if (existing.status === nextStatusRaw) return NextResponse.json({ ok: true, unchanged: true });
-    const updated = await prisma.order.update({ where: { id: params.id }, data: { status: nextStatusRaw as any }, select: { status: true } });
+    // Un pedido cancelado ya devolvió su inventario; reactivarlo dejaría el stock inconsistente.
+    if (existing.status === 'CANCELED') return err(409,'ORDER_CANCELED','Un pedido cancelado no puede cambiar de estado.');
+
+    // El cambio de estado y la devolución de inventario ocurren juntos (transacción atómica).
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.order.update({ where: { id: params.id }, data: { status: nextStatusRaw as any }, select: { status: true } });
+      if (nextStatusRaw === 'CANCELED') {
+        const items = await tx.orderItem.findMany({ where: { orderId: params.id }, select: { productId: true, quantity: true } });
+        for (const it of items) {
+          await tx.product.update({ where: { id: it.productId }, data: { stock: { increment: it.quantity } } });
+        }
+      }
+      return row;
+    });
     logAudit('order.status.update','Order', params.id, { from: existing.status, to: updated.status });
     return NextResponse.json({ ok: true, from: existing.status, to: updated.status });
   } catch (e:any) {
@@ -60,7 +74,7 @@ export async function PATCH(req: Request, { params }: Params) {
       if (e.message === 'UNAUTHENTICATED') return err(401,'UNAUTHENTICATED');
       if (e.message === 'FORBIDDEN') return err(403,'FORBIDDEN');
     }
-    return err(500,'SERVER_ERROR');
+    return serverErrorResponse('admin.orders.PATCH', e);
   }
 }
 

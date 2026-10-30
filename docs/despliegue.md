@@ -56,12 +56,12 @@ services:
     environment:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: secret
-      POSTGRES_DB: conejomalo
+      POSTGRES_DB: punto_hogar
     ports: ["5432:5432"]
   web:
     build: .
     environment:
-      DATABASE_URL: postgres://app:secret@db:5432/conejomalo
+      DATABASE_URL: postgres://app:secret@db:5432/punto_hogar
       JWT_SECRET: cambia_esto
     ports: ["3000:3000"]
     depends_on: [db]

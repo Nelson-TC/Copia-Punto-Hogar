@@ -37,7 +37,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 	}, [load]);
 
 	const setQuantity = useCallback(async (productId: string, qty: number) => {
-		await fetch('/api/cart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId, qty }) });
+		await fetch('/api/cart', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId, qty }) });
 		window.dispatchEvent(new CustomEvent('cart:updated'));
 		await load();
 	}, [load]);

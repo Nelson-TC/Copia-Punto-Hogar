@@ -44,7 +44,7 @@ export default function AdminUserForm({ initial, mode='create', roles = [], init
 		if (!v.email.trim()) e.email = 'Email requerido';
 		if (v.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email)) e.email = 'Formato inválido';
 		if (mode==='create' && !v.password?.trim()) e.password = 'Contraseña requerida';
-		if (v.password && v.password.length < 6) e.password = 'Mínimo 6 caracteres';
+		if (v.password && v.password.length < 8) e.password = 'Mínimo 8 caracteres';
 		return e;
 	}
 

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../src/lib/prisma';
+import { serverErrorResponse } from '../../../src/lib/db-errors';
+import { publicProduct } from '../../../src/lib/serialize';
 
 export const dynamic = 'force-dynamic';
 // GET /api/products
@@ -34,6 +36,16 @@ export async function GET(req: NextRequest) {
         { OR: [ { categoryId: cat }, { category: { slug: cat } } ] }
       ]);
     }
+    // Filtro por rango de precio (RF03): ?minPrice=10&maxPrice=200
+    const minPrice = parseFloat(searchParams.get('minPrice') || '');
+    const maxPrice = parseFloat(searchParams.get('maxPrice') || '');
+    if (!Number.isNaN(minPrice) || !Number.isNaN(maxPrice)) {
+      where.price = {};
+      if (!Number.isNaN(minPrice)) where.price.gte = minPrice;
+      if (!Number.isNaN(maxPrice)) where.price.lte = maxPrice;
+    }
+    // ?inStock=1 oculta los productos agotados
+    if (searchParams.get('inStock') === '1') where.stock = { gt: 0 };
 
     // Sorting
     let orderBy: any = { createdAt: 'desc' };
@@ -59,7 +71,7 @@ export async function GET(req: NextRequest) {
         include: { category: { select: { id: true, name: true, slug: true } } },
         orderBy
       });
-      return NextResponse.json(products);
+      return NextResponse.json(products.map(publicProduct));
     }
 
     // Paginated path
@@ -80,8 +92,8 @@ export async function GET(req: NextRequest) {
     ]);
 
     const totalPages = Math.max(Math.ceil(total / per), 1);
-    return NextResponse.json({ items, page, per, total, totalPages });
+    return NextResponse.json({ items: items.map(publicProduct), page, per, total, totalPages });
   } catch (e: any) {
-    return NextResponse.json({ error: 'Error fetching products', details: e.message }, { status: 500 });
+    return serverErrorResponse('products.GET', e, 'No se pudieron consultar los productos.');
   }
 }

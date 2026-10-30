@@ -4,6 +4,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Controles nativos (sliders, casillas) en el naranja de la marca. */
+input[type="range"], input[type="checkbox"], input[type="radio"] { accent-color: #F58220; }
+
+/* Identidad visual de Punto Hogar: títulos en azul marino (zero-specificity para que las clases de color los sobrescriban). */
+:where(#main-content) :where(h1, h2, h3) { color: #123453; }
+
 /* Dense mode adjustments */
 html.dense-mode .chart-card { padding: 0.75rem; }
 html.dense-mode .chart-card h3 { font-size: 11px; }

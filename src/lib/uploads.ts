@@ -17,7 +17,8 @@ export interface UploadValidationOptions {
 }
 
 export function slugify(str: string) {
-  return str.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  // Se eliminan los acentos ("decoración" -> "decoracion") antes de limpiar el resto de caracteres.
+  return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 }
 
 export async function ensureDir(rel: string) {

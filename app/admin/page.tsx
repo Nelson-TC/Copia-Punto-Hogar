@@ -275,6 +275,8 @@ function KpiGrid({ summary, previous }: { summary: any; previous: any }) {
 	}
 	const cards = [
 		{ key:'revenue', label: 'Ingresos', hint:'Total de ingresos (bruto) del periodo.', value: totals.revenue, prev: ps.totals.revenue, fmt: formatCurrency },
+		{ key:'profit', label: 'Ganancia', hint:'Ventas menos el costo de lo vendido. Solo pedidos no cancelados y productos con costo registrado.', value: totals.profit, prev: ps.totals.profit, fmt: formatCurrency },
+		{ key:'margin', label: 'Margen %', hint:'Ganancia / ventas (margen sobre el precio de venta).', value: totals.profitMarginPct * 100, prev: ps.totals.profitMarginPct * 100, fmt: (n:number)=> n.toFixed(1)+'%' },
 		{ key:'orders', label: 'Pedidos', hint:'Número de pedidos creados.', value: totals.orders, prev: ps.totals.orders },
 		{ key:'aov', label: 'Ticket medio', hint:'Ingresos / pedidos.', value: totals.aov, prev: ps.totals.aov, fmt: formatCurrency },
 		{ key:'units', label: 'Unidades', hint:'Suma de cantidades vendidas.', value: totals.units, prev: ps.totals.units },
@@ -298,7 +300,7 @@ function KpiCard({ label, hint, value, deltaInfo, format }: { label: string; hin
 	const { state, pct, diff } = deltaInfo;
 	const color = state==='up'? 'text-emerald-600': state==='down'? 'text-red-600':'text-neutral-400';
 	// Color backgrounds by metric type (simple heuristic by label)
-	const tone = label.startsWith('Ing')? 'bg-orange-50 border-orange-200': label.startsWith('Ped')? 'bg-blue-50 border-blue-200': label.startsWith('Ticket')? 'bg-amber-50 border-amber-200': label.startsWith('Uni')? 'bg-lime-50 border-lime-200': label.startsWith('Nuevos')? 'bg-sky-50 border-sky-200': label.startsWith('Comp')? 'bg-violet-50 border-violet-200': label.startsWith('Recom')? 'bg-emerald-50 border-emerald-200': label.startsWith('Cancel')? 'bg-rose-50 border-rose-200': label.startsWith('Convers')? 'bg-cyan-50 border-cyan-200': label.startsWith('Recompra')? 'bg-fuchsia-50 border-fuchsia-200':'bg-white/90';
+	const tone = label.startsWith('Ing')? 'bg-orange-50 border-orange-200': label.startsWith('Gan')? 'bg-green-50 border-green-200': label.startsWith('Margen')? 'bg-teal-50 border-teal-200': label.startsWith('Ped')? 'bg-blue-50 border-blue-200': label.startsWith('Ticket')? 'bg-amber-50 border-amber-200': label.startsWith('Uni')? 'bg-lime-50 border-lime-200': label.startsWith('Nuevos')? 'bg-sky-50 border-sky-200': label.startsWith('Comp')? 'bg-violet-50 border-violet-200': label.startsWith('Recom')? 'bg-emerald-50 border-emerald-200': label.startsWith('Cancel')? 'bg-rose-50 border-rose-200': label.startsWith('Convers')? 'bg-cyan-50 border-cyan-200': label.startsWith('Recompra')? 'bg-fuchsia-50 border-fuchsia-200':'bg-white/90';
 	const arrow = state==='up'? '▲': state==='down'? '▼':'●';
 	const showChange = state!=='flat' && state!=='new';
 	return (

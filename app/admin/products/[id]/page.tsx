@@ -14,7 +14,19 @@ export default async function EditProductPage({ params }: Props) {
     prisma.category.findMany({ where: { active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } })
   ]);
   if (!product) return <p className="text-sm text-neutral-600">Producto no encontrado.</p>;
-  const initial = { ...product, description: product.description ?? '', imageUrl: product.imageUrl ?? '' } as any;
+  // Solo datos planos hacia el componente de cliente (el precio de Prisma es un Decimal y las fechas son Date).
+  const initial = {
+    id: product.id,
+    name: product.name,
+    slug: product.slug,
+    description: product.description ?? '',
+    price: Number(product.price),
+    costPrice: Number(product.costPrice),
+    stock: product.stock,
+    categoryId: product.categoryId,
+    imageUrl: product.imageUrl ?? '',
+    active: product.active
+  } as any;
   return (
     <div className="max-w-5xl">
       <AdminProductForm mode="edit" initial={initial} categories={categories} />

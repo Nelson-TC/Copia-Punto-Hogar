@@ -22,6 +22,9 @@ export default async function OrderDetailPage({ params }: Props) {
 		include: { items: true, user: { select: { id: true, email: true } } }
 	});
 	if (!order) return <p className="text-sm text-neutral-600">Pedido no encontrado.</p>;
+	// Ganancia del pedido: precio de venta menos el costo que tenía cada producto cuando se vendió.
+	const hasCost = order.items.some(i => Number(i.unitCost) > 0);
+	const profit = order.items.reduce((s, i) => Number(i.unitCost) > 0 ? s + (Number(i.unitPrice) - Number(i.unitCost)) * i.quantity : s, 0);
 
 	return (
 		<div className="space-y-8">
@@ -53,7 +56,9 @@ export default async function OrderDetailPage({ params }: Props) {
 						<dd className="col-span-2">{formatCurrency(Number(order.subtotal))}</dd>
 						<dt className="text-neutral-500">Total</dt>
 						<dd className="col-span-2 font-semibold text-carrot-dark">{formatCurrency(Number(order.total))}</dd>
-						<dt className="text-neutral-500">Fecha</dt>
+						<dt className="text-neutral-500">Ganancia</dt>
+							<dd className="col-span-2 text-sm font-semibold text-green-700" title="Ventas menos el costo registrado al momento de la compra">{hasCost ? formatCurrency(profit) : <span className="font-normal text-neutral-400">Sin costo registrado</span>}</dd>
+							<dt className="text-neutral-500">Fecha</dt>
 						<dd className="col-span-2 text-xs">{order.createdAt.toISOString().slice(0,16).replace('T',' ')}</dd>
 						{order.user && (
 							<>

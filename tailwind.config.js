@@ -7,26 +7,29 @@ module.exports = {
   ],
   theme: {
     extend: {
+      // Paleta oficial de Punto Hogar.
+      // Los nombres (nav, carrot, brand...) se mantienen por compatibilidad con los componentes existentes:
+      //   nav    = azul marino (color principal)   #123453
+      //   carrot = naranja (color secundario)      #F58220
+      //   brand  = verde (color de acento)         #55A844
+      //   ink    = gris oscuro (textos y eslogan)  #3F4145
       colors: {
-        // Primary brand (existing)
         brand: {
-          DEFAULT: '#FF6B6B',
-          dark: '#D94A4A'
+          DEFAULT: '#55A844',
+          dark: '#3F8A32'
         },
-        // New accent (carrot tone for interactive emphasis)
         carrot: {
-          DEFAULT: '#FC924C',
-          dark: '#CC6A1F'
+          DEFAULT: '#F58220',
+          dark: '#C96510'
         },
-        // Navbar deep natural palette
         nav: {
-          DEFAULT: '#1F2E25', // base
-          dark: '#18241E' // subtle darker bottom / hover shade
+          DEFAULT: '#123453', // azul marino
+          dark: '#0C2438'     // tono más oscuro para degradados y hover
         },
-        // Surfaces for future section backgrounds
+        ink: '#3F4145',
         surface: {
           DEFAULT: '#FFFFFF',
-          alt: '#F5F7F5'
+          alt: '#F4F7FA'
         }
       }
     }

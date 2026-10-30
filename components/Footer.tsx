@@ -6,9 +6,9 @@ export default function Footer() {
   <footer className="mt-20 bg-gradient-to-b from-nav to-nav-dark text-white/90">
       <div className="max-w-6xl px-6 py-14 mx-auto grid gap-12 text-sm md:grid-cols-4">
         <div className="space-y-4">
-          <h3 className="text-base font-semibold tracking-wide text-white">ConejoMalo</h3>
-          <p className="leading-relaxed text-white/80">Cuidamos el bienestar de tu conejo con productos seleccionados: alimento, juguetes y accesorios de calidad.</p>
-          <p className="text-xs text-white/55">© {year} ConejoMalo</p>
+          <h3 className="text-base font-semibold tracking-wide text-white">Punto Hogar</h3>
+          <p className="leading-relaxed text-white/80">Tu tienda por departamentos en línea: artículos para el hogar, ferretería, iluminación, jardín y más, en un solo lugar.</p>
+          <p className="text-xs text-white/55">© {year} Punto Hogar</p>
         </div>
         <div className="space-y-4">
           <h4 className="font-semibold text-white">Tienda</h4>
@@ -16,6 +16,7 @@ export default function Footer() {
             <li><a className="transition text-white/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-carrot/60 rounded underline-offset-4 hover:underline" href="/products">Productos</a></li>
             <li><a className="transition text-white/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-carrot/60 rounded underline-offset-4 hover:underline" href="/categories">Categorías</a></li>
             <li><a className="transition text-white/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-carrot/60 rounded underline-offset-4 hover:underline" href="/cart">Carrito</a></li>
+            <li><a className="transition text-white/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-carrot/60 rounded underline-offset-4 hover:underline" href="/credits">Créditos de imágenes</a></li>
           </ul>
         </div>
         <div className="space-y-5 md:col-span-2">
@@ -30,7 +31,7 @@ export default function Footer() {
           </form>
         </div>
       </div>
-      <div className="px-6 py-4 text-[11px] text-center text-white/55 bg-black/20 backdrop-blur-sm">Construido con Next.js & Prisma</div>
+      <div className="px-6 py-4 text-[11px] text-center text-white/55 bg-black/20 backdrop-blur-sm">Punto Hogar · Proyecto académico — Next.js, Prisma, PostgreSQL y Tailwind CSS</div>
     </footer>
   );
 }

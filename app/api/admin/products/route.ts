@@ -3,6 +3,8 @@ import { prisma } from '../../../../src/lib/prisma';
 import { requirePermission } from '../../../../src/lib/permissions';
 import { FALLBACK_IMAGE, saveUploadedFile, slugify } from '../../../../src/lib/uploads';
 import { logAudit } from '../../../../src/lib/audit';
+import { validateProductInput } from '../../../../src/lib/product-validation';
+import { isUniqueViolation, serverErrorResponse } from '../../../../src/lib/db-errors';
 
 export const runtime = 'nodejs';
 
@@ -74,36 +76,31 @@ export async function POST(req: Request) {
 	try {
 		await requirePermission('product:create');
 		const contentType = req.headers.get('content-type') || '';
-		let name = '';
-		let price: any;
-		let description: any = null;
-		let categoryId = '';
+		let raw: { name?: unknown; price?: unknown; costPrice?: unknown; stock?: unknown; categoryId?: unknown; description?: unknown } = {};
 		let active: any = true;
 		let imageUrl: string | null = null;
 		let file: File | null = null;
 
 		if (contentType.includes('multipart/form-data')) {
 			const form = await req.formData();
-			name = String(form.get('name') || '').trim();
-			price = form.get('price');
-			description = (form.get('description') || '').toString().trim() || null;
-			categoryId = String(form.get('categoryId') || '');
+			raw = { name: form.get('name'), price: form.get('price'), costPrice: form.get('costPrice'), stock: form.get('stock'), categoryId: form.get('categoryId'), description: form.get('description') };
 			active = String(form.get('active') || 'true') === 'true';
 			const f = form.get('image');
 			if (f instanceof File && f.size > 0) file = f;
 		} else {
-			const body = await req.json();
-			name = (body.name||'').trim();
-			price = body.price;
-			description = body.description || null;
-			categoryId = body.categoryId;
+			const body = await req.json().catch(() => null);
+			if (!body || typeof body !== 'object') return err(400,'MISSING_FIELDS','Faltan campos obligatorios.');
+			raw = body;
 			active = body.active ?? true;
 		}
 
-		if (!name || !price || !categoryId) return err(400,'MISSING_FIELDS','Missing fields');
-		const numericPrice = Number(price);
-		if (Number.isNaN(numericPrice)) return err(400,'INVALID_PRICE','Invalid price');
-	const slug = slugify(name);
+		// Validación en el servidor (precio > 0, stock entero >= 0, nombre y categoría obligatorios).
+		const parsed = validateProductInput(raw);
+		if (!parsed.ok) return err(400, parsed.code, parsed.message);
+		const { name, price: numericPrice, costPrice, stock, categoryId, description } = parsed.value;
+		const category = await prisma.category.findUnique({ where: { id: categoryId }, select: { id: true } });
+		if (!category) return err(400,'CATEGORY_REQUIRED','La categoría seleccionada no existe.');
+		const slug = slugify(name);
 
 		if (file) {
 			try {
@@ -120,14 +117,15 @@ export async function POST(req: Request) {
 		}
 		if (!imageUrl) imageUrl = FALLBACK_IMAGE;
 
-		const product = await prisma.product.create({ data: { name, slug, price: numericPrice, description, categoryId, imageUrl, active } });
-		logAudit('product.create','Product', product.id, { name });
+		const product = await prisma.product.create({ data: { name, slug, price: numericPrice, costPrice, stock, description, categoryId, imageUrl, active } });
+		logAudit('product.create','Product', product.id, { name, stock, costPrice });
 		return NextResponse.json(product, { status: 201 });
 	} catch (e: any) {
 		if (e instanceof Error) {
 			if (e.message === 'UNAUTHENTICATED') return err(401,'UNAUTHENTICATED');
 			if (e.message === 'FORBIDDEN') return err(403,'FORBIDDEN');
 		}
-		return err(500,'SERVER_ERROR','Error creating product');
+		if (isUniqueViolation(e)) return err(409,'DUPLICATE','Ya existe un producto con ese nombre. Usa un nombre distinto.');
+		return serverErrorResponse('admin.products.POST', e, 'Error al crear el producto.');
 	}
 }

@@ -2,6 +2,9 @@ import { notFound } from 'next/navigation';
 import { prisma } from '../../../src/lib/prisma';
 import ProductCard from '../../../components/ProductCard';
 import Link from 'next/link';
+import { plainProduct } from '../../../src/lib/serialize';
+
+export const dynamic = 'force-dynamic';
 
 interface Props { params: { slug: string }, searchParams: { page?: string; per?: string } }
 
@@ -15,20 +18,21 @@ function parsePagination(searchParams: Props['searchParams']) {
 }
 
 async function getCategoryWithProducts(slug: string, page: number, per: number) {
-	const category = await prisma.category.findUnique({ where: { slug }, select: { id: true, name: true, slug: true } });
-	if (!category) return null;
-	const total = await prisma.product.count({ where: { category: { slug } } });
+	const category = await prisma.category.findUnique({ where: { slug }, select: { id: true, name: true, slug: true, active: true } });
+	if (!category || !category.active) return null;
+	// Cada categoría muestra únicamente productos activos.
+	const total = await prisma.product.count({ where: { category: { slug }, active: true } });
 	const totalPages = Math.max(1, Math.ceil(total / per));
 	const safePage = Math.min(page, totalPages);
 	const skip = (safePage - 1) * per;
 	const products = await prisma.product.findMany({
-		where: { category: { slug } },
+		where: { category: { slug }, active: true },
 		skip,
 		take: per,
 		include: { category: { select: { name: true } } },
 		orderBy: { createdAt: 'desc' }
 	});
-	return { category, products, total, totalPages, page: safePage, per };
+	return { category, products: products.map(plainProduct), total, totalPages, page: safePage, per };
 }
 
 function buildLink(base: string, page: number, per: number) {

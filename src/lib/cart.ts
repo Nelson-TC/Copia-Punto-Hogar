@@ -1,80 +1,65 @@
+import { fetchWithTimeout, throwIfNotOk, ApiError } from './http';
+
 export interface CartItem { productId: string; qty: number }
-export interface CartData { items: CartItem[] }
+export interface EnrichedCartItem extends CartItem {
+  name: string;
+  price: number;
+  lineTotal: number;
+  slug?: string;
+  imageUrl?: string | null;
+  stock?: number; // existencias disponibles hoy
+}
+export interface CartData { items: CartItem[]; subtotal?: number; enriched?: EnrichedCartItem[]; issues?: string[] }
+
+function notifyCartUpdated() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('cart:updated'));
+}
+
+async function send(method: 'POST' | 'PUT' | 'DELETE', body: unknown, fallback: string): Promise<CartData> {
+  const res = await fetchWithTimeout('/api/cart', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  await throwIfNotOk(res, fallback);
+  const data = await res.json();
+  notifyCartUpdated();
+  return data;
+}
 
 export async function getCart(): Promise<CartData> {
-  const res = await fetch('/api/cart', { cache: 'no-store' });
-  handleError(res, 'No se pudo obtener carrito');
+  const res = await fetchWithTimeout('/api/cart', { cache: 'no-store' });
+  await throwIfNotOk(res, 'No se pudo obtener el carrito');
   return res.json();
 }
 
-export async function addToCart(productId: string, qty: number = 1) {
-  const res = await fetch('/api/cart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId, qty }) });
-  handleError(res, 'No se pudo agregar');
-  const data = await res.json();
-  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('cart:updated'));
-  return data;
-}
-
-export async function updateItem(productId: string, qty: number) {
-  const res = await fetch('/api/cart', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId, qty }) });
-  handleError(res, 'No se pudo actualizar');
-  const data = await res.json();
-  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('cart:updated'));
-  return data;
-}
-
-export async function removeItem(productId: string) {
-  const res = await fetch('/api/cart', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId }) });
-  handleError(res, 'No se pudo eliminar');
-  const data = await res.json();
-  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('cart:updated'));
-  return data;
-}
-export interface CartData { items: CartItem[]; subtotal?: number; enriched?: EnrichedCartItem[] }
-export interface EnrichedCartItem extends CartItem { name: string; price: number; lineTotal: number }
-
-function handleError(res: Response, fallbackMsg: string) {
-  if (!res.ok) throw new Error(fallbackMsg);
-}
-
-// Optimistic helpers
-export function optimisticAdd(local: CartData, productId: string, qty: number = 1): CartData {
-  const existing = local.items.find(i => i.productId === productId);
-  if (existing) existing.qty += qty; else local.items.push({ productId, qty });
-  return { ...local };
-}
-
-export function optimisticUpdate(local: CartData, productId: string, qty: number): CartData {
-  const idx = local.items.findIndex(i => i.productId === productId);
-  if (idx !== -1) {
-    if (qty <= 0) local.items.splice(idx, 1); else local.items[idx].qty = qty;
-  }
-  return { ...local };
-}
-
-export function optimisticRemove(local: CartData, productId: string): CartData {
-  return { ...local, items: local.items.filter(i => i.productId !== productId) };
-}
+// Los mensajes de error vienen del servidor (por ejemplo: "Solo hay 3 unidades disponibles de ...").
+export const addToCart = (productId: string, qty: number = 1) => send('POST', { productId, qty }, 'No se pudo agregar al carrito');
+export const updateItem = (productId: string, qty: number) => send('PUT', { productId, qty }, 'No se pudo actualizar la cantidad');
+export const removeItem = (productId: string) => send('DELETE', { productId }, 'No se pudo eliminar el producto');
 
 // Orders
 export interface CreateOrderInput { customer: string; email: string; phone: string; address: string }
+
+export class OrderError extends ApiError {
+  fields: Record<string, string>;
+  outOfStock: { productId: string; name: string; available: number; requested: number }[];
+  constructor(base: ApiError) {
+    super(base.message, base.status, base.code, base.data);
+    this.fields = base.data?.fields || {};
+    this.outOfStock = Array.isArray(base.data?.items) ? base.data.items : [];
+  }
+}
+
 export async function createOrder(data: CreateOrderInput) {
-  const res = await fetch('/api/orders', {
+  const res = await fetchWithTimeout('/api/orders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  if (res.status === 422) {
-    const j = await res.json();
-    const err: any = new Error('Validación');
-    err.fields = j.fields || {};
-    throw err;
+  try {
+    await throwIfNotOk(res, 'No se pudo crear el pedido');
+  } catch (e) {
+    throw e instanceof ApiError ? new OrderError(e) : e;
   }
-  handleError(res, 'No se pudo crear orden');
   const order = await res.json();
   // El servidor limpia la cookie; aquí notificamos al cliente para refrescar cualquier UI dependiente
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('cart:updated'));
-  }
+  notifyCartUpdated();
   return order;
 }

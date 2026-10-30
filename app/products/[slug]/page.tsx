@@ -7,9 +7,12 @@ import ProductPurchasePanel from '../../../components/ProductPurchasePanel';
 
 interface Props { params: { slug: string } }
 
+export const dynamic = 'force-dynamic';
+
 export default async function ProductDetailPage({ params }: Props) {
 	const product = await prisma.product.findUnique({ where: { slug: params.slug }, include: { category: true } });
-	if (!product) return notFound();
+	// Regla de negocio: un producto inactivo no se muestra al cliente aunque tenga existencias.
+	if (!product || !product.active) return notFound();
 
 	const priceNumber = Number(product.price);
 
@@ -59,12 +62,12 @@ export default async function ProductDetailPage({ params }: Props) {
 							<p className="text-sm leading-relaxed whitespace-pre-line text-neutral-700 max-w-prose">{product.description}</p>
 						)}
 					</header>
-					<ProductPurchasePanel productId={product.id} productName={product.name} priceFormatted={formatCurrency(priceNumber)} />
+					<ProductPurchasePanel productId={product.id} productName={product.name} priceFormatted={formatCurrency(priceNumber)} stock={product.stock} />
 					<section aria-label="Detalles" className="space-y-3">
 						<h2 className="text-sm font-semibold tracking-wide text-neutral-800">Información</h2>
 						<ul className="text-[12px] text-neutral-600 space-y-1">
 							{product.category && <li><strong className="font-medium text-neutral-700">Categoría:</strong> {product.category.name}</li>}
-							<li><strong className="font-medium text-neutral-700">Estado:</strong> {product.active ? 'Disponible' : 'No disponible'}</li>
+							<li><strong className="font-medium text-neutral-700">Disponibilidad:</strong> {product.stock > 0 ? `${product.stock} en existencia` : 'Agotado'}</li>
 						</ul>
 					</section>
 				</div>

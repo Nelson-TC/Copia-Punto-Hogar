@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 interface SearchParams { q?: string; }
 
 const getCategories = cache(async (q?: string) => {
-	const where: any = {};
+	const where: any = { active: true }; // el cliente solo ve categorías activas
 	if (q && q.trim()) {
 		where.name = { contains: q.trim(), mode: 'insensitive' };
 	}

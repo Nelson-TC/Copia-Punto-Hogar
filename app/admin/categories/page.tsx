@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma } from '../../../src/lib/prisma';
 import { getSession } from '../../../src/lib/auth';
 import { getUserPermissions } from '../../../src/lib/permissions';
+import AdminCategoryRowActions from '../../../components/AdminCategoryRowActions';
 
 interface SearchParams { page?: string; per?: string }
 
@@ -18,11 +19,12 @@ export const dynamic = 'force-dynamic';
 
 export default async function AdminCategoriesPage({ searchParams }: { searchParams: SearchParams }) {
 	const session = await getSession();
-	let canCreate = false; let canUpdate = false;
+	let canCreate = false; let canUpdate = false; let canDelete = false;
 	if (session) {
 		const perms = await getUserPermissions(session.sub);
 		canCreate = perms.has('admin:access') || perms.has('category:create');
 		canUpdate = perms.has('admin:access') || perms.has('category:update');
+		canDelete = perms.has('admin:access') || perms.has('category:delete');
 	}
   const { page, per } = parsePagination(searchParams);
   const total = await prisma.category.count();
@@ -31,7 +33,8 @@ export default async function AdminCategoriesPage({ searchParams }: { searchPara
   const categories = await prisma.category.findMany({
     orderBy: { createdAt: 'desc' },
     skip: (currentPage - 1) * per,
-    take: per
+    take: per,
+    include: { _count: { select: { products: true } } }
   });
   const start = total === 0 ? 0 : (currentPage - 1) * per + 1;
   const end = Math.min(total, currentPage * per);
@@ -52,7 +55,7 @@ export default async function AdminCategoriesPage({ searchParams }: { searchPara
 						<tr>
 							<th className="px-3 py-2 font-medium">Nombre</th>
 							<th className="px-3 py-2 font-medium">Activa</th>
-							<th className="px-3 py-2 font-medium">Creada</th>
+							<th className="px-3 py-2 font-medium">Productos</th>
 							<th className="px-3 py-2" />
 						</tr>
 					</thead>
@@ -61,9 +64,9 @@ export default async function AdminCategoriesPage({ searchParams }: { searchPara
 							<tr key={c.id} className="hover:bg-neutral-50">
 								<td className="px-3 py-2 font-medium text-neutral-800">{c.name}</td>
 								<td className="px-3 py-2"><span className={`px-2 py-0.5 text-[11px] rounded-full font-medium ${c.active? 'bg-green-100 text-green-700':'bg-neutral-200 text-neutral-600'}`}>{c.active? 'Sí':'No'}</span></td>
-								<td className="px-3 py-2 text-xs text-neutral-600 whitespace-nowrap">{new Date(c.createdAt).toLocaleDateString()}</td>
+								<td className="px-3 py-2 text-xs text-neutral-600 whitespace-nowrap">{c._count?.products ?? 0}</td>
 								<td className="px-3 py-2 text-right">
-									{canUpdate && <Link href={`/admin/categories/${c.id}`} className="text-xs font-medium text-carrot hover:underline">Editar</Link>}
+									<AdminCategoryRowActions id={c.id} name={c.name} canUpdate={canUpdate} canDelete={canDelete} />
 								</td>
 							</tr>
 						))}

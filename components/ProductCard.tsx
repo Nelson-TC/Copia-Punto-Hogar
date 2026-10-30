@@ -14,6 +14,7 @@ interface ProductCardProps {
     description?: string | null;
     price: any;
     imageUrl?: string | null;
+    stock?: number;
     category?: { name: string } | null;
   };
   showDescription?: boolean;
@@ -29,6 +30,10 @@ export default function ProductCard({ product, showDescription = true, variant='
   const price = formatCurrency(Number(product.price));
   const image = product.imageUrl || '/images/noimage.webp';
   const compact = variant === 'compact';
+  // Disponibilidad: sin dato de stock se asume disponible (compatibilidad con respuestas antiguas).
+  const stock = typeof product.stock === 'number' ? product.stock : Infinity;
+  const soldOut = stock <= 0;
+  const maxQty = Math.min(99, stock);
 
   function handleNavigate() {
     router.push(`/products/${product.slug}`);
@@ -36,7 +41,7 @@ export default function ProductCard({ product, showDescription = true, variant='
 
   async function handleAdd(e?: React.MouseEvent) {
     if (e) e.stopPropagation(); // evita navegación
-    if (adding) return;
+    if (adding || soldOut) return;
     setAdding(true);
     try {
       await addToCart(product.id, qty);
@@ -46,7 +51,7 @@ export default function ProductCard({ product, showDescription = true, variant='
     } finally { setAdding(false); }
   }
 
-  function inc(e: React.MouseEvent) { e.stopPropagation(); setQty(q => Math.min(99, q + 1)); }
+  function inc(e: React.MouseEvent) { e.stopPropagation(); setQty(q => Math.min(maxQty, q + 1)); }
   function dec(e: React.MouseEvent) { e.stopPropagation(); setQty(q => Math.max(1, q - 1)); }
 
   return (
@@ -71,6 +76,12 @@ export default function ProductCard({ product, showDescription = true, variant='
             <i className='bx bxs-tag-alt text-carrot text-[12px]' /> {product.category.name}
           </span>
         )}
+        {soldOut && (
+          <span className="absolute top-2 right-2 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow">Agotado</span>
+        )}
+        {!soldOut && stock <= 5 && (
+          <span className="absolute top-2 right-2 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow">Quedan {stock}</span>
+        )}
       </div>
       <div className={`flex flex-col flex-1 gap-2 ${compact ? 'p-3' : 'p-4'}`}>
         <div className="space-y-1">
@@ -81,7 +92,7 @@ export default function ProductCard({ product, showDescription = true, variant='
         </div>
         <div className="mt-auto space-y-2">
           <div className="flex items-center justify-between">
-            <span className={`${compact ? 'text-[12px]' : 'text-[13px]'} font-semibold text-neutral-900`}>{price}</span>
+            <span className={`${compact ? 'text-[12px]' : 'text-[13px]'} font-bold text-nav`}>{price}</span>
           </div>
           {variant==='default' ? (
             <div className="flex items-stretch gap-2" onClick={e => e.stopPropagation()}>
@@ -93,11 +104,11 @@ export default function ProductCard({ product, showDescription = true, variant='
               <button
                 type="button"
                 onClick={handleAdd}
-                disabled={adding}
+                disabled={adding || soldOut}
                 className="h-7 px-3 inline-flex items-center gap-1 rounded-full bg-carrot text-[11px] font-semibold text-nav hover:bg-carrot-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-carrot/60 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {adding ? <i className='text-sm bx bx-loader-alt animate-spin' /> : <i className='text-sm bx bxs-cart-add' />}
-                <span>{adding ? '...' : 'Añadir'}</span>
+                <span>{soldOut ? 'Agotado' : adding ? '...' : 'Añadir'}</span>
               </button>
             </div>
           ) : (
@@ -105,11 +116,11 @@ export default function ProductCard({ product, showDescription = true, variant='
               <button
                 type="button"
                 onClick={()=>handleAdd()}
-                disabled={adding}
+                disabled={adding || soldOut}
                 className="w-full h-7 px-2 inline-flex justify-center items-center gap-1 rounded-md bg-carrot text-[10px] font-semibold text-nav hover:bg-carrot-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-carrot/60 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {adding ? <i className='text-sm bx bx-loader-alt animate-spin' /> : <i className='text-sm bx bxs-cart-add' />}
-                <span>{adding ? '...' : 'Agregar'}</span>
+                <span>{soldOut ? 'Agotado' : adding ? '...' : 'Agregar'}</span>
               </button>
             </div>
           )}

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../src/lib/prisma';
 import { requirePermission, invalidatePermissions } from '../../../../src/lib/permissions';
 import { logAudit } from '../../../../src/lib/audit';
+import { isUniqueViolation, serverErrorResponse } from '../../../../src/lib/db-errors';
+import { MIN_PASSWORD_LENGTH, assertCanChangeAdminRole, resolveRoleIds, validateEmail } from '../../../../src/lib/user-admin';
 import bcrypt from 'bcryptjs';
 
 function err(status: number, code: string, message?: string) { return NextResponse.json({ error: message || code, code }, { status }); }
@@ -28,37 +30,37 @@ export async function GET(req: Request) {
 			rolesByUser.set(ur.userId, list);
 		}
 		const items = rows.map(u => ({ id: u.id, email: u.email, name: u.name, roles: rolesByUser.get(u.id) || [], createdAt: u.createdAt }));
-	return NextResponse.json({ items, page, per, total, totalPages: Math.max(1, Math.ceil(total / per)) });
+		return NextResponse.json({ items, page, per, total, totalPages: Math.max(1, Math.ceil(total / per)) });
 	} catch (e: any) {
 		if (e instanceof Error) {
 			if (e.message === 'UNAUTHENTICATED') return err(401,'UNAUTHENTICATED');
 			if (e.message === 'FORBIDDEN') return err(403,'FORBIDDEN');
 		}
-		return err(500,'SERVER_ERROR','Error fetching users');
+		return serverErrorResponse('admin.users.GET', e, 'Error al consultar usuarios.');
 	}
 }
 
 export async function POST(req: Request) {
 	try {
 		await requirePermission('user:create');
-		const body = await req.json();
-		const email = String(body.email||'').trim();
-		const name = body.name? String(body.name).trim(): null;
-		const roles: string[] = Array.isArray(body.roles)? body.roles.map((r:any)=> String(r)) : [];
-		const password: string | undefined = typeof body.password === 'string' && body.password ? body.password : undefined;
-		if (!email) return err(400,'EMAIL_REQUIRED','Email required');
+		const body = await req.json().catch(() => null);
+		const email = String(body?.email||'').trim().toLowerCase();
+		const name = body?.name? String(body.name).trim(): null;
+		const roleIds = (await resolveRoleIds(body)) ?? [];
+		const password: string | undefined = typeof body?.password === 'string' && body.password ? body.password : undefined;
+		if (!email) return err(400,'EMAIL_REQUIRED','El email es obligatorio.');
+		if (!validateEmail(email)) return err(400,'INVALID_EMAIL','El formato del correo no es válido.');
+		if (!password || password.length < MIN_PASSWORD_LENGTH) return err(400,'INVALID_PASSWORD',`La contraseña es obligatoria y debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`);
+		await assertCanChangeAdminRole(roleIds);
 		const existing = await prisma.user.findUnique({ where: { email } });
-		if (existing) return err(409,'USER_EXISTS','User already exists');
-		const passwordHash = password ? await bcrypt.hash(password, 10) : '';
+		if (existing) return err(409,'USER_EXISTS','Ya existe un usuario con ese correo.');
+		const passwordHash = await bcrypt.hash(password, 10);
 		const created = await prisma.user.create({ data: { email, name, passwordHash } });
-		if (roles.length) {
-			const roleRows = await prisma.roleEntity.findMany({ where: { name: { in: roles } }, select: { id: true } });
-			if (roleRows.length) {
-				await prisma.userRole.createMany({ data: roleRows.map(r=>({ userId: created.id, roleId: r.id })) });
-			}
+		if (roleIds.length) {
+			await prisma.userRole.createMany({ data: roleIds.map(roleId => ({ userId: created.id, roleId })) });
 		}
 		invalidatePermissions(created.id);
-		logAudit('user.create','User', created.id, { email, roles });
+		logAudit('user.create','User', created.id, { email, roleIds });
 		const assigned = await prisma.userRole.findMany({ where: { userId: created.id }, include: { role: true } });
 		return NextResponse.json({ id: created.id, email: created.email, name: created.name, roles: assigned.map(a=> a.role.name), createdAt: created.createdAt }, { status: 201 });
 	} catch (e: any) {
@@ -66,6 +68,7 @@ export async function POST(req: Request) {
 			if (e.message === 'UNAUTHENTICATED') return err(401,'UNAUTHENTICATED');
 			if (e.message === 'FORBIDDEN') return err(403,'FORBIDDEN');
 		}
-		return err(500,'SERVER_ERROR','Error creating user');
+		if (isUniqueViolation(e)) return err(409,'USER_EXISTS','Ya existe un usuario con ese correo.');
+		return serverErrorResponse('admin.users.POST', e, 'Error al crear el usuario.');
 	}
 }

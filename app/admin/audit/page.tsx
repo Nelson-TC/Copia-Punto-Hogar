@@ -63,7 +63,7 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Rec
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight">Auditoría</h1>
           <p className="text-sm text-neutral-600">
-            Últimas acciones registradas{q ? <> — búsqueda: <span className="font-medium">"{q}"</span></> : ''}.
+            Últimas acciones registradas{q ? <> — búsqueda: <span className="font-medium">&quot;{q}&quot;</span></> : ''}.
           </p>
         </div>
         <div className="flex items-center gap-2">

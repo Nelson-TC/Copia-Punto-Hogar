@@ -35,7 +35,7 @@ function toNum(n: any) { return n instanceof Decimal ? Number(n) : Number(n ?? 0
 
 export interface SummaryMetrics {
   range: { from: string; to: string; granularity: string };
-  totals: { revenue: number; orders: number; aov: number; units: number };
+  totals: { revenue: number; orders: number; aov: number; units: number; profit: number; profitMarginPct: number };
   users: { newUsers: number; buyers: number; repeat: number };
   orders: { canceled: number; canceledPct: number };
   generatedAt: string;
@@ -52,11 +52,23 @@ export async function getSummaryMetrics(range: DateRange): Promise<SummaryMetric
   ]);
 
   let revenue = 0; let units = 0; let canceled = 0;
+  // Ganancia: precio de venta menos costo de lo vendido. Solo pedidos no cancelados y solo líneas con costo registrado
+  // (unitCost = 0 significa "costo desconocido"; incluirlas inflaría la ganancia).
+  let profit = 0; let salesWithCost = 0;
   for (const o of orders) {
     revenue += toNum(o.total);
     if (o.status === 'CANCELED') canceled++;
-    for (const it of o.items) units += it.quantity;
+    for (const it of o.items) {
+      units += it.quantity;
+      const cost = toNum(it.unitCost);
+      if (o.status !== 'CANCELED' && cost > 0) {
+        const price = toNum(it.unitPrice);
+        profit += (price - cost) * it.quantity;
+        salesWithCost += price * it.quantity;
+      }
+    }
   }
+  const profitMarginPct = salesWithCost ? profit / salesWithCost : 0;
   const ordersCount = orders.length;
   const aov = ordersCount ? revenue / ordersCount : 0;
   const buyers = allBuyers.length;
@@ -65,7 +77,7 @@ export async function getSummaryMetrics(range: DateRange): Promise<SummaryMetric
 
   return {
     range: { from: from.toISOString().slice(0,10), to: to.toISOString().slice(0,10), granularity: range.granularity },
-    totals: { revenue, orders: ordersCount, aov, units },
+    totals: { revenue, orders: ordersCount, aov, units, profit, profitMarginPct },
     users: { newUsers: usersInRange.length, buyers, repeat },
     orders: { canceled, canceledPct },
     generatedAt: new Date().toISOString()
@@ -245,6 +257,8 @@ export function exportSummaryCsv(summary: SummaryMetrics): string {
     { metric: 'orders', value: summary.totals.orders },
     { metric: 'aov', value: summary.totals.aov },
     { metric: 'units', value: summary.totals.units },
+    { metric: 'profit', value: summary.totals.profit },
+    { metric: 'profitMarginPct', value: summary.totals.profitMarginPct },
     { metric: 'newUsers', value: summary.users.newUsers },
     { metric: 'buyers', value: summary.users.buyers },
     { metric: 'repeat', value: summary.users.repeat },

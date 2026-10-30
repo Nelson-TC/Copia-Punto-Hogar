@@ -25,14 +25,14 @@ function Hero() {
 	return (
 		<section className="space-y-4">
 			<h1 className="text-3xl font-bold tracking-tight">Contacto</h1>
-			<p className="max-w-2xl text-sm leading-relaxed text-neutral-600">¿Tienes dudas sobre un producto, tu pedido o necesitas recomendaciones para tu conejo? Escríbenos y nuestro equipo te responderá lo antes posible.</p>
+			<p className="max-w-2xl text-sm leading-relaxed text-neutral-600">¿Tienes dudas sobre un producto, tu pedido o necesitas recomendaciones para tu hogar? Escríbenos y nuestro equipo te responderá lo antes posible.</p>
 		</section>
 	);
 }
 
 function InfoBlocks() {
 	const items = [
-		{ label: 'Soporte general', value: 'soporte@conejomalo.store', type: 'email' },
+		{ label: 'Soporte general', value: 'soporte@puntohogar.store', type: 'email' },
 		{ label: 'Teléfono', value: '+502 5555 1234', type: 'tel' },
 		{ label: 'Horario', value: 'Lun - Vie · 9:00 a 18:00 GT', type: 'text' }
 	];

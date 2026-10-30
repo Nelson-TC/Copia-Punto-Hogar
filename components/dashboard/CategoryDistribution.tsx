@@ -2,7 +2,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 
-const COLORS = ['#FF8A3D','#FFB347','#FFC970','#FFE4B3','#FFD1A6','#FF9E5C'];
+const COLORS = ['#123453','#F58220','#55A844','#3F4145','#F9A85F','#8BC47F'];
 
 interface CatData { name: string; revenue: number; units: number; }
 
@@ -47,7 +47,6 @@ export function CategoryDistribution({ data, compact = false }: { data: CatData[
   }, [mounted, data, compact, expanded]);
 
   const pieData = useMemo(()=> data.slice(0,6).map(d => ({ name: d.name, value: d.revenue, units: d.units, pct: d.revenue/total })), [data, total]);
-  if (!data.length) return <div className="p-4 text-xs border rounded-lg shadow-sm bg-white/90 text-neutral-500">Sin datos de categorías.</div>;
 
   // Accesibilidad: cerrar con ESC si expanded
   useEffect(()=> {
@@ -56,6 +55,9 @@ export function CategoryDistribution({ data, compact = false }: { data: CatData[
     window.addEventListener('keydown', onKey);
     return ()=> window.removeEventListener('keydown', onKey);
   }, [expanded]);
+
+  // Sin datos: el return anticipado va después de todos los hooks (reglas de hooks de React).
+  if (!data.length) return <div className="p-4 text-xs border rounded-lg shadow-sm bg-white/90 text-neutral-500">Sin datos de categorías.</div>;
 
   return (
     <div className={`relative p-4 border rounded-lg bg-white/90 shadow-sm space-y-3 min-w-0 overflow-visible ${compact? 'flex flex-col':''}`}>      

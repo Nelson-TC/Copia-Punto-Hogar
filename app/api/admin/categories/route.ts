@@ -3,6 +3,7 @@ import { prisma } from '../../../../src/lib/prisma';
 import { requirePermission } from '../../../../src/lib/permissions';
 import { FALLBACK_IMAGE, saveUploadedFile, slugify } from '../../../../src/lib/uploads';
 import { logAudit } from '../../../../src/lib/audit';
+import { isUniqueViolation, serverErrorResponse } from '../../../../src/lib/db-errors';
 
 export const runtime = 'nodejs';
 
@@ -91,6 +92,7 @@ export async function POST(req: Request) {
 			if (e.message === 'UNAUTHENTICATED') return err(401,'UNAUTHENTICATED');
 			if (e.message === 'FORBIDDEN') return err(403,'FORBIDDEN');
 		}
-		return err(500,'SERVER_ERROR','Error creating category');
+		if (isUniqueViolation(e)) return err(409,'DUPLICATE','Ya existe una categoría con ese nombre.');
+		return serverErrorResponse('admin.categories.POST', e, 'Error al crear la categoría.');
 	}
 }

@@ -3,6 +3,7 @@ import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { mapApiError } from '../src/lib/client-errors';
 import { usePermissions } from '../src/lib/use-permissions';
+import { marginPct, priceFromMargin, profitPerUnit } from '../src/lib/pricing';
 
 interface ProductFormValues {
 	id?: string;
@@ -10,6 +11,9 @@ interface ProductFormValues {
 	slug: string;
 	description: string;
 	price: string; // keep as string for input
+	costPrice: string; // costo (ya incluye IVA)
+	margin: string; // % sobre el precio de venta
+	stock: string; // entero >= 0 (string para el input)
 	categoryId: string;
 	imageUrl: string; // only for showing existing stored image, no manual input
 	active: boolean;
@@ -30,6 +34,9 @@ export default function AdminProductForm({ initial, categories, mode='create'}: 
 		slug: initial?.slug || '',
 		description: initial?.description || '',
 		price: initial?.price ? String(initial.price) : '',
+		costPrice: initial?.costPrice ? String(initial.costPrice) : '',
+		margin: initial?.price && initial?.costPrice ? String(marginPct(Number(initial.price), Number(initial.costPrice)) ?? '') : '',
+		stock: initial?.stock !== undefined && initial?.stock !== null ? String(initial.stock) : '0',
 		categoryId: initial?.categoryId || categories[0]?.id || '',
 		imageUrl: initial?.imageUrl || '',
 		active: initial?.active ?? true
@@ -40,6 +47,8 @@ export default function AdminProductForm({ initial, categories, mode='create'}: 
 	const [file, setFile] = useState<File|null>(null);
 	const [filePreview, setFilePreview] = useState<string| null>(null);
 	const [removeImage, setRemoveImage] = useState(false);
+	// Que campo manda al recalcular: el margen (calcula el precio) o el precio (calcula el margen).
+	const [driver, setDriver] = useState<'margin'|'price'>('price');
   const { can } = usePermissions();
 
 	useEffect(()=>{ if (!values.slug && values.name) autoSlug(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
@@ -51,6 +60,10 @@ export default function AdminProductForm({ initial, categories, mode='create'}: 
 		if (v.slug && !/^[a-z0-9-]+$/.test(v.slug)) e.slug = 'Formato inválido';
 		if (!v.price.trim()) e.price = 'Precio requerido';
 		if (v.price && isNaN(Number(v.price))) e.price = 'Debe ser numérico';
+		else if (v.price && Number(v.price) <= 0) e.price = 'El precio debe ser mayor a 0';
+		if (v.margin.trim() && (isNaN(Number(v.margin)) || Number(v.margin) >= 100)) e.margin = 'El margen debe ser menor a 100%';
+		if (!/^[0-9]+$/.test(v.stock.trim())) e.stock = 'El stock debe ser un entero mayor o igual a 0';
+		if (v.costPrice.trim() && (isNaN(Number(v.costPrice)) || Number(v.costPrice) < 0)) e.costPrice = 'El costo debe ser un número mayor o igual a 0';
 		if (!v.categoryId) e.categoryId = 'Categoría requerida';
 		return e;
 	}
@@ -58,6 +71,34 @@ export default function AdminProductForm({ initial, categories, mode='create'}: 
 	function update<K extends keyof ProductFormValues>(key: K, val: ProductFormValues[K]) {
 		setValues(s=>({ ...s, [key]: val }));
 		if (errors[key as string]) setErrors(e=>{ const c={...e}; delete c[key as string]; return c; });
+	}
+
+	function num(s: string) { const n = Number(s); return s.trim() !== '' && Number.isFinite(n) ? n : null; }
+
+	// Costo, margen y precio estan ligados: al cambiar uno se recalcula el otro segun el campo que manda.
+	function onCostChange(v: string) {
+		const cost = num(v); const margin = num(values.margin); const price = num(values.price);
+		setValues(s => {
+			const next = { ...s, costPrice: v };
+			const computed = cost !== null && margin !== null ? priceFromMargin(cost, margin) : null;
+			if (driver === 'margin' && computed !== null) next.price = String(computed);
+			else if (cost !== null && cost > 0 && price !== null && price > 0) next.margin = String(marginPct(price, cost) ?? '');
+			return next;
+		});
+		setErrors(e => { const c = { ...e }; delete c.costPrice; return c; });
+	}
+	function onMarginChange(v: string) {
+		setDriver('margin');
+		const cost = num(values.costPrice); const margin = num(v);
+		const computed = cost !== null && margin !== null ? priceFromMargin(cost, margin) : null;
+	setValues(s => ({ ...s, margin: v, price: computed !== null ? String(computed) : s.price }));
+	setErrors(e => { const c = { ...e }; delete c.margin; return c; });
+	}
+	function onPriceChange(v: string) {
+		setDriver('price');
+		const cost = num(values.costPrice); const price = num(v);
+		setValues(s => ({ ...s, price: v, margin: cost !== null && cost > 0 && price !== null && price > 0 ? String(marginPct(price, cost) ?? '') : s.margin }));
+		setErrors(e => { const c = { ...e }; delete c.price; return c; });
 	}
 
 	function autoSlug() {
@@ -99,6 +140,8 @@ export default function AdminProductForm({ initial, categories, mode='create'}: 
 					form.append('slug', values.slug.trim());
 					form.append('description', values.description.trim() || '');
 					form.append('price', String(Number(values.price)));
+					form.append('costPrice', String(Number(values.costPrice || 0)));
+					form.append('stock', String(Number(values.stock)));
 					form.append('categoryId', values.categoryId);
 					form.append('active', String(values.active));
 					if (file) form.append('image', file);
@@ -111,6 +154,8 @@ export default function AdminProductForm({ initial, categories, mode='create'}: 
 						slug: values.slug.trim(),
 						description: values.description.trim() || null,
 						price: Number(values.price),
+						costPrice: Number(values.costPrice || 0),
+						stock: Number(values.stock),
 						categoryId: values.categoryId,
 						imageUrl: null, // backend will fallback
 						active: values.active
@@ -145,18 +190,19 @@ export default function AdminProductForm({ initial, categories, mode='create'}: 
 					<div className="grid gap-6 md:grid-cols-2">
 						<div className="space-y-2">
 							<label htmlFor="name" className="text-sm font-medium text-neutral-700">Nombre <span className="text-red-500">*</span></label>
-							<input id="name" value={values.name} onChange={e=>update('name', e.target.value)} onBlur={autoSlug} className={`w-full px-3 py-2 text-sm rounded-md border bg-white focus:outline-none focus:ring-2 ${errors.name? 'border-red-400 ring-red-200':'border-neutral-300 focus:ring-carrot/50'}`} placeholder="Pelota mordedora" />
+							<input id="name" value={values.name} onChange={e=>update('name', e.target.value)} onBlur={autoSlug} className={`w-full px-3 py-2 text-sm rounded-md border bg-white focus:outline-none focus:ring-2 ${errors.name? 'border-red-400 ring-red-200':'border-neutral-300 focus:ring-carrot/50'}`} placeholder="Organizador de cocina" />
 							{errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
 						</div>
 						<div className="space-y-2">
 							<label htmlFor="slug" className="text-sm font-medium text-neutral-700">Slug <span className="text-red-500">*</span></label>
-							<input id="slug" value={values.slug} onChange={e=>update('slug', e.target.value)} className={`w-full px-3 py-2 text-sm rounded-md border font-mono focus:outline-none focus:ring-2 ${errors.slug? 'border-red-400 ring-red-200':'border-neutral-300 focus:ring-carrot/50'}`} placeholder="pelota-mordedora" />
+							<input id="slug" value={values.slug} onChange={e=>update('slug', e.target.value)} className={`w-full px-3 py-2 text-sm rounded-md border font-mono focus:outline-none focus:ring-2 ${errors.slug? 'border-red-400 ring-red-200':'border-neutral-300 focus:ring-carrot/50'}`} placeholder="organizador-de-cocina" />
 							{errors.slug && <p className="text-xs text-red-500">{errors.slug}</p>}
 						</div>
 						<div className="space-y-2">
-							<label htmlFor="price" className="text-sm font-medium text-neutral-700">Precio (Q) <span className="text-red-500">*</span></label>
-							<input id="price" value={values.price} onChange={e=>update('price', e.target.value)} className={`w-full px-3 py-2 text-sm rounded-md border bg-white focus:outline-none focus:ring-2 ${errors.price? 'border-red-400 ring-red-200':'border-neutral-300 focus:ring-carrot/50'}`} placeholder="25.90" />
-							{errors.price && <p className="text-xs text-red-500">{errors.price}</p>}
+							<label htmlFor="stock" className="text-sm font-medium text-neutral-700">Stock (existencias) <span className="text-red-500">*</span></label>
+							<input id="stock" inputMode="numeric" value={values.stock} onChange={e=>update('stock', e.target.value)} className={`w-full px-3 py-2 text-sm rounded-md border bg-white focus:outline-none focus:ring-2 ${errors.stock? 'border-red-400 ring-red-200':'border-neutral-300 focus:ring-carrot/50'}`} placeholder="25" />
+							{errors.stock && <p className="text-xs text-red-500">{errors.stock}</p>}
+							<p className="text-[11px] text-neutral-500">Con stock 0 el producto aparece como agotado y no puede agregarse al carrito.</p>
 						</div>
 						<div className="space-y-2">
 							<label htmlFor="category" className="text-sm font-medium text-neutral-700">Categoría <span className="text-red-500">*</span></label>
@@ -166,6 +212,32 @@ export default function AdminProductForm({ initial, categories, mode='create'}: 
 							{errors.categoryId && <p className="text-xs text-red-500">{errors.categoryId}</p>}
 						</div>
 					</div>
+					<fieldset className="p-4 space-y-4 border rounded-lg border-neutral-200 bg-neutral-50/60">
+						<legend className="px-2 text-sm font-semibold text-nav">Costo, margen y precio de venta</legend>
+						<div className="grid gap-4 md:grid-cols-3">
+							<div className="space-y-2">
+								<label htmlFor="costPrice" className="text-sm font-medium text-neutral-700">Costo (Q, con IVA)</label>
+								<input id="costPrice" inputMode="decimal" value={values.costPrice} onChange={e=>onCostChange(e.target.value)} className={`w-full px-3 py-2 text-sm rounded-md border bg-white focus:outline-none focus:ring-2 ${errors.costPrice? 'border-red-400 ring-red-200':'border-neutral-300 focus:ring-carrot/50'}`} placeholder="60.00" />
+								{errors.costPrice && <p className="text-xs text-red-500">{errors.costPrice}</p>}
+							</div>
+							<div className="space-y-2">
+								<label htmlFor="margin" className="text-sm font-medium text-neutral-700">Margen de ganancia (%)</label>
+								<div className="relative">
+									<input id="margin" inputMode="decimal" value={values.margin} onChange={e=>onMarginChange(e.target.value)} className="w-full px-3 py-2 pr-8 text-sm bg-white border rounded-md border-neutral-300 focus:outline-none focus:ring-2 focus:ring-carrot/50" placeholder="40" />
+									<span className="absolute text-sm -translate-y-1/2 pointer-events-none right-3 top-1/2 text-neutral-400">%</span>
+								</div>
+								{errors.margin && <p className="text-xs text-red-500">{errors.margin}</p>}
+			<p className="text-[11px] text-neutral-500">Precio = costo ÷ (1 − margen).</p>
+							</div>
+							<div className="space-y-2">
+								<label htmlFor="price" className="text-sm font-medium text-neutral-700">Precio de venta (Q, con IVA) <span className="text-red-500">*</span></label>
+								<input id="price" inputMode="decimal" value={values.price} onChange={e=>onPriceChange(e.target.value)} className={`w-full px-3 py-2 text-sm rounded-md border bg-white focus:outline-none focus:ring-2 ${errors.price? 'border-red-400 ring-red-200':'border-neutral-300 focus:ring-carrot/50'}`} placeholder="89.90" />
+								{errors.price && <p className="text-xs text-red-500">{errors.price}</p>}
+								<p className="text-[11px] text-neutral-500">O escribe el precio y el margen se calcula.</p>
+							</div>
+						</div>
+						<PriceBreakdown price={num(values.price)} cost={num(values.costPrice)} />
+					</fieldset>
 					<div className="space-y-2">
 						<label htmlFor="description" className="text-sm font-medium text-neutral-700">Descripción</label>
 						<textarea id="description" value={values.description} onChange={e=>update('description', e.target.value)} rows={5} className="w-full px-3 py-2 text-sm leading-relaxed rounded-md border bg-white border-neutral-300 focus:outline-none focus:ring-2 focus:ring-carrot/50" placeholder="Detalles, beneficios, recomendaciones..."/>
@@ -214,5 +286,26 @@ export default function AdminProductForm({ initial, categories, mode='create'}: 
 				{cannotEdit && <p className="w-full text-xs text-red-500">No tienes permiso para {values.id? 'actualizar':'crear'} productos.</p>}
 			</div>
 		</form>
+	);
+}
+
+// Resumen en vivo: ganancia por unidad y margen (costo y precio ya incluyen IVA, no se separa).
+function PriceBreakdown({ price, cost }: { price: number | null; cost: number | null }) {
+	const money = (n: number) => `Q${n.toFixed(2)}`;
+	if (price === null || price <= 0) return <p className="text-xs text-neutral-500">Captura el costo y el margen (o el precio de venta) para ver la ganancia.</p>;
+	const hasCost = cost !== null && cost > 0;
+	const profit = hasCost ? profitPerUnit(price, cost as number) : null;
+	const margin = hasCost ? marginPct(price, cost as number) : null;
+	const loss = profit !== null && profit < 0;
+	return (
+		<div className="space-y-2" data-testid="price-breakdown">
+			<dl className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-3">
+				<div className="flex justify-between gap-2"><dt className="text-neutral-500">Ganancia por unidad</dt><dd className={`font-semibold tabular-nums ${loss ? 'text-red-600' : 'text-green-700'}`}>{profit !== null ? money(profit) : '—'}</dd></div>
+				<div className="flex justify-between gap-2"><dt className="text-neutral-500">Margen de ganancia</dt><dd className="font-medium tabular-nums">{margin !== null ? `${margin}%` : '—'}</dd></div>
+				<div className="flex justify-between gap-2"><dt className="text-neutral-500">Precio de venta</dt><dd className="font-medium tabular-nums">{money(price)}</dd></div>
+			</dl>
+			{loss && <p role="alert" className="text-xs font-medium text-red-600">Con este precio la tienda pierde dinero: el precio no cubre el costo.</p>}
+			{!hasCost && <p className="text-xs text-amber-700">Sin costo registrado no se puede calcular la ganancia.</p>}
+		</div>
 	);
 }

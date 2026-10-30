@@ -3,6 +3,7 @@ import { prisma } from '../../../../../src/lib/prisma';
 import { requirePermission } from '../../../../../src/lib/permissions';
 import { FALLBACK_IMAGE, saveUploadedFile, slugify, deleteIfLocal } from '../../../../../src/lib/uploads';
 import { logAudit } from '../../../../../src/lib/audit';
+import { isUniqueViolation, serverErrorResponse } from '../../../../../src/lib/db-errors';
 
 export const runtime = 'nodejs';
 
@@ -84,15 +85,27 @@ export async function PUT(req: Request, { params }: Params) {
 			if (e.message === 'UNAUTHENTICATED') return err(401,'UNAUTHENTICATED');
 			if (e.message === 'FORBIDDEN') return err(403,'FORBIDDEN');
 		}
-		return err(500,'SERVER_ERROR','Error updating');
+		if (isUniqueViolation(e)) return err(409,'DUPLICATE','Ya existe una categoría con ese nombre.');
+		return serverErrorResponse('admin.categories.PUT', e, 'Error al actualizar la categoría.');
 	}
 }
 
 export async function DELETE(_: Request, { params }: Params) {
 	try {
 		await requirePermission('category:delete');
-		const existing = await prisma.category.findUnique({ where: { id: params.id }, select: { imageUrl: true } });
+		const existing = await prisma.category.findUnique({ where: { id: params.id }, select: { imageUrl: true, name: true } });
 		if (!existing) return err(404,'NOT_FOUND');
+		// Regla de negocio: no se elimina una categoría que todavía tenga productos asociados.
+		const [activeCount, totalCount] = await Promise.all([
+			prisma.product.count({ where: { categoryId: params.id, active: true } }),
+			prisma.product.count({ where: { categoryId: params.id } })
+		]);
+		if (activeCount > 0) {
+			return err(409,'CATEGORY_HAS_ACTIVE_PRODUCTS',`No se puede eliminar "${existing.name}": tiene ${activeCount} producto${activeCount === 1 ? '' : 's'} activo${activeCount === 1 ? '' : 's'} asociado${activeCount === 1 ? '' : 's'}. Muévelos a otra categoría o desactívalos primero.`);
+		}
+		if (totalCount > 0) {
+			return err(409,'CATEGORY_HAS_PRODUCTS',`No se puede eliminar "${existing.name}": aún tiene ${totalCount} producto${totalCount === 1 ? '' : 's'} inactivo${totalCount === 1 ? '' : 's'}. Reasígnalos a otra categoría primero.`);
+		}
 		await prisma.category.delete({ where: { id: params.id } });
 		logAudit('category.delete','Category', params.id);
 		if (existing.imageUrl && existing.imageUrl !== FALLBACK_IMAGE) deleteIfLocal(existing.imageUrl);
@@ -102,6 +115,6 @@ export async function DELETE(_: Request, { params }: Params) {
 			if (e.message === 'UNAUTHENTICATED') return err(401,'UNAUTHENTICATED');
 			if (e.message === 'FORBIDDEN') return err(403,'FORBIDDEN');
 		}
-		return err(500,'SERVER_ERROR','Error deleting');
+		return serverErrorResponse('admin.categories.DELETE', e, 'Error al eliminar la categoría.');
 	}
 }
