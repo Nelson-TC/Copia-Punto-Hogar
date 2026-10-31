@@ -1,5 +1,5 @@
-// Seed de producción: catálogo + administrador real + roles y permisos. Es repetible (idempotente).
-// Requiere DATABASE_URL, ADMIN_EMAIL y ADMIN_PASSWORD. Uso: npm run db:seed:prod
+// Seed de producción: catálogo, usuarios de prueba (admin@test.com), pedidos de ejemplo y roles/permisos. Es repetible.
+// Requiere DATABASE_URL. Uso: npm run db:seed:prod
 const { runSeed, prisma } = require('./seed');
 
 runSeed({ production: true })

@@ -181,14 +181,8 @@ function costFromPrice(price, categoryName) {
 
 const INACTIVE_PRODUCTS = new Set(['Peluche suave 40 cm', 'Cepillo para sanitario con base']); // ejemplos de productos ocultos
 
-// Administrador de producción usado cuando no se definen ADMIN_EMAIL/ADMIN_PASSWORD.
-const DEFAULT_PROD_ADMIN = {
-  email: 'admin@puntohogar.com',
-  passwordHash: '$2a$10$t5qiw88lpmAX6AH7cxtCyOI3ZQh1LqW4A02YUEt75Z4DOF0oYWo/u'
-};
-
-// production=true (npm run db:seed:prod): solo catálogo y un administrador real (ADMIN_EMAIL/ADMIN_PASSWORD
-// o DEFAULT_PROD_ADMIN); sin usuarios de prueba ni pedidos de ejemplo, y sin pisar precios ni stock ya existentes.
+// production=true (npm run db:seed:prod): igual que el seed normal (usuarios de prueba y pedidos de ejemplo
+// para las estadísticas), pero un nuevo deploy no pisa precios ni stock de productos ya existentes.
 async function runSeed({ production = false } = {}) {
   console.log('Seeding categorías de Punto Hogar...');
   const categories = [];
@@ -204,30 +198,8 @@ async function runSeed({ production = false } = {}) {
   }
 
   console.log('Seeding usuarios...');
-  let admin, user;
-  if (production) {
-    const envEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
-    const envPassword = process.env.ADMIN_PASSWORD || '';
-    let email, passwordHash;
-    if (envEmail && envPassword.length >= 8) {
-      email = envEmail;
-      passwordHash = await bcrypt.hash(envPassword, 10);
-    } else {
-      // Administrador por defecto de producción. Solo se guarda el hash bcrypt, nunca la contraseña en claro.
-      console.log('ADMIN_EMAIL/ADMIN_PASSWORD no definidos; se usa el administrador por defecto.');
-      email = DEFAULT_PROD_ADMIN.email;
-      passwordHash = DEFAULT_PROD_ADMIN.passwordHash;
-    }
-    // Si el administrador ya existe no se cambia su contraseña: un nuevo deploy no debe pisarla.
-    admin = await prisma.user.upsert({
-      where: { email },
-      update: { role: 'ADMIN' },
-      create: { email, name: 'Administrador', passwordHash, role: 'ADMIN' }
-    });
-  } else {
-    admin = await upsertUser({ name: 'Administrador', email: 'admin@test.com', password: 'admin1234', role: 'ADMIN' });
-    user = await upsertUser({ name: 'Cliente de prueba', email: 'test@test.com', password: 'test1234', role: 'USER' });
-  }
+  const admin = await upsertUser({ name: 'Administrador', email: 'admin@test.com', password: 'admin1234', role: 'ADMIN' });
+  const user = await upsertUser({ name: 'Cliente de prueba', email: 'test@test.com', password: 'test1234', role: 'USER' });
 
   console.log('Seeding productos...');
   let total = 0;
@@ -242,7 +214,7 @@ async function runSeed({ production = false } = {}) {
         where: { slug },
         // en producción un nuevo deploy no debe devolver precio ni stock a los valores de ejemplo
         update: production ? {} : { name, description, price, costPrice, stock, active, categoryId: cat.id, imageUrl: photo },
-        create: { name, slug, description, price, costPrice, stock, active, categoryId: cat.id, userId: admin?.id, imageUrl: photo }
+        create: { name, slug, description, price, costPrice, stock, active, categoryId: cat.id, userId: admin.id, imageUrl: photo }
       });
       total++;
     }
@@ -253,10 +225,8 @@ async function runSeed({ production = false } = {}) {
   // Pedidos de ejemplo (6 meses hacia atrás) para alimentar el dashboard y el historial del cliente de prueba.
   // Son datos históricos: no descuentan inventario.
   // ------------------------------------------------------------------
-  const existingOrders = production ? -1 : await prisma.order.count();
-  if (production) {
-    console.log('Producción: no se generan pedidos de ejemplo.');
-  } else if (existingOrders > 0) {
+  const existingOrders = await prisma.order.count();
+  if (existingOrders > 0) {
     console.log(`Órdenes existentes (${existingOrders}) -> se omite generación de órdenes.`);
   } else {
     console.log('Generando pedidos de ejemplo (3 por día, últimos 6 meses)...');
