@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 const prisma = new PrismaClient();
+const { seedDemoData } = require('./demo-data');
 
 async function upsertUser({ email, name, password, role }) {
   const passwordHash = await bcrypt.hash(password, 10);
@@ -181,8 +182,7 @@ function costFromPrice(price, categoryName) {
 
 const INACTIVE_PRODUCTS = new Set(['Peluche suave 40 cm', 'Cepillo para sanitario con base']); // ejemplos de productos ocultos
 
-// production=true (npm run db:seed:prod): igual que el seed normal (usuarios de prueba y pedidos de ejemplo
-// para las estadísticas), pero un nuevo deploy no pisa precios ni stock de productos ya existentes.
+// production=true (npm run db:seed:prod): igual que el seed normal (usuarios de prueba y datos de demostración), pero un nuevo deploy no pisa precios ni stock de productos ya existentes.
 async function runSeed({ production = false } = {}) {
   console.log('Seeding categorías de Punto Hogar...');
   const categories = [];
@@ -221,101 +221,8 @@ async function runSeed({ production = false } = {}) {
   }
   console.log(`Productos cargados: ${total}`);
 
-  // ------------------------------------------------------------------
-  // Pedidos de ejemplo (6 meses hacia atrás) para alimentar el dashboard y el historial del cliente de prueba.
-  // Son datos históricos: no descuentan inventario.
-  // ------------------------------------------------------------------
-  const existingOrders = await prisma.order.count();
-  if (existingOrders > 0) {
-    console.log(`Órdenes existentes (${existingOrders}) -> se omite generación de órdenes.`);
-  } else {
-    console.log('Generando pedidos de ejemplo (3 por día, últimos 6 meses)...');
-    const products = await prisma.product.findMany({ where: { active: true }, select: { id: true, price: true, costPrice: true, name: true, slug: true } });
-    if (products.length === 0) {
-      console.warn('No hay productos, no se pueden generar órdenes.');
-    } else {
-      const end = new Date();
-      const startRange = new Date();
-      startRange.setMonth(end.getMonth() - 6);
-      startRange.setHours(0, 0, 0, 0);
-
-      const STATUS_WEIGHTS = [
-        { status: 'COMPLETED', w: 40 },
-        { status: 'PAID', w: 20 },
-        { status: 'SHIPPED', w: 15 },
-        { status: 'PENDING', w: 15 },
-        { status: 'CANCELED', w: 10 }
-      ];
-      const weightSum = STATUS_WEIGHTS.reduce((a, b) => a + b.w, 0);
-      function pickStatus(r) {
-        let acc = 0;
-        for (const s of STATUS_WEIGHTS) { acc += s.w; if (r * weightSum < acc) return s.status; }
-        return 'PENDING';
-      }
-      function randomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
-
-      const ordersToCreate = [];
-      let counter = 0;
-      for (let d = new Date(startRange.getTime()); d <= end; d.setDate(d.getDate() + 1)) {
-        for (let i = 0; i < 3; i++) {
-          counter++;
-          const createdAt = new Date(d.getFullYear(), d.getMonth(), d.getDate(), randomInt(7, 21), randomInt(0, 59), randomInt(0, 59));
-          if (createdAt > end) continue;
-          const itemCount = randomInt(1, 4);
-          const used = new Set();
-          const items = [];
-          for (let j = 0; j < itemCount; j++) {
-            let idx = randomInt(0, products.length - 1);
-            let guard = 0;
-            while (used.has(idx) && guard++ < 10) idx = randomInt(0, products.length - 1);
-            used.add(idx);
-            const p = products[idx];
-            items.push({ productId: p.id, name: p.name, slug: p.slug, unitPrice: p.price, unitCost: p.costPrice, quantity: randomInt(1, 3) });
-          }
-          const subtotal = Number(items.reduce((sum, it) => sum + Number(it.unitPrice) * it.quantity, 0).toFixed(2));
-          const isDemoUser = counter % 40 === 0; // algunos pedidos pertenecen al cliente de prueba (historial)
-          const customerIndex = randomInt(1, 600);
-          ordersToCreate.push({
-            customer: isDemoUser ? 'Cliente de prueba' : `Cliente ${customerIndex}`,
-            email: isDemoUser ? user.email : `cliente${customerIndex}@test.com`,
-            address: `${randomInt(1, 20)} avenida ${randomInt(1, 15)}-${randomInt(10, 99)}, zona ${randomInt(1, 18)}, Ciudad de Guatemala`,
-            subtotal,
-            total: subtotal, // los precios ya incluyen IVA
-            createdAt,
-            phone: `+502 ${randomInt(4000, 5999)}-${randomInt(1000, 9999)}`,
-            status: pickStatus(Math.random()),
-            userId: isDemoUser ? user.id : undefined,
-            items
-          });
-        }
-      }
-
-      console.log(`Preparados ${ordersToCreate.length} pedidos. Insertando...`);
-      const batchSize = 40;
-      for (let start = 0; start < ordersToCreate.length; start += batchSize) {
-        const slice = ordersToCreate.slice(start, start + batchSize);
-        await prisma.$transaction(
-          slice.map(o =>
-            prisma.order.create({
-              data: {
-                customer: o.customer,
-                email: o.email,
-                address: o.address,
-                subtotal: o.subtotal,
-                total: o.total,
-                createdAt: o.createdAt,
-                phone: o.phone,
-                status: o.status,
-                userId: o.userId,
-                items: { create: o.items }
-              }
-            })
-          )
-        );
-      }
-      console.log(`Pedidos insertados: ${ordersToCreate.length}`);
-    }
-  }
+  // Clientes, pedidos e historial simulando ~2 años de operación (ver prisma/demo-data.js).
+  await seedDemoData(prisma, { admin, demoUser: user });
 
   console.log('Seed completado.');
 }
