@@ -20,7 +20,7 @@
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
-    "@prisma/client": "latest",
+    "@prisma/client": "^6.16.0",
     "bcryptjs": "^2.4.3",
     "boxicons": "^2.1.4",
     "jose": "^5.10.0",
