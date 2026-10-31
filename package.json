@@ -12,7 +12,9 @@
     "prisma:studio": "prisma studio",
     "db:seed": "node prisma/seed.js",
     "db:reset-seed": "node scripts/reset-and-seed.js",
-    "db:seed:rbac": "node prisma/seed-rbac.js"
+    "db:seed:rbac": "node prisma/seed-rbac.js",
+    "postinstall": "prisma generate",
+    "build": "prisma migrate deploy && next build"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
