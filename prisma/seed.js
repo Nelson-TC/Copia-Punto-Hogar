@@ -181,8 +181,14 @@ function costFromPrice(price, categoryName) {
 
 const INACTIVE_PRODUCTS = new Set(['Peluche suave 40 cm', 'Cepillo para sanitario con base']); // ejemplos de productos ocultos
 
-// production=true (npm run db:seed:prod): solo catálogo y un administrador real tomado de ADMIN_EMAIL y
-// ADMIN_PASSWORD; sin usuarios de prueba ni pedidos de ejemplo, y sin pisar precios ni stock ya existentes.
+// Administrador de producción usado cuando no se definen ADMIN_EMAIL/ADMIN_PASSWORD.
+const DEFAULT_PROD_ADMIN = {
+  email: 'admin@puntohogar.com',
+  passwordHash: '$2a$10$t5qiw88lpmAX6AH7cxtCyOI3ZQh1LqW4A02YUEt75Z4DOF0oYWo/u'
+};
+
+// production=true (npm run db:seed:prod): solo catálogo y un administrador real (ADMIN_EMAIL/ADMIN_PASSWORD
+// o DEFAULT_PROD_ADMIN); sin usuarios de prueba ni pedidos de ejemplo, y sin pisar precios ni stock ya existentes.
 async function runSeed({ production = false } = {}) {
   console.log('Seeding categorías de Punto Hogar...');
   const categories = [];
@@ -200,21 +206,24 @@ async function runSeed({ production = false } = {}) {
   console.log('Seeding usuarios...');
   let admin, user;
   if (production) {
-    const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
-    const password = process.env.ADMIN_PASSWORD || '';
-    if (!email || password.length < 8) {
-      // Sin credenciales no se crea administrador, pero el deploy sigue: se reutiliza uno existente si lo hay.
-      console.warn('Aviso: ADMIN_EMAIL/ADMIN_PASSWORD no definidos (o contraseña < 8 caracteres); no se crea administrador.');
-      admin = await prisma.user.findFirst({ where: { role: 'ADMIN' }, orderBy: { createdAt: 'asc' } });
+    const envEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+    const envPassword = process.env.ADMIN_PASSWORD || '';
+    let email, passwordHash;
+    if (envEmail && envPassword.length >= 8) {
+      email = envEmail;
+      passwordHash = await bcrypt.hash(envPassword, 10);
     } else {
-      const passwordHash = await bcrypt.hash(password, 10);
-      // Si el administrador ya existe no se cambia su contraseña: un nuevo deploy no debe pisarla.
-      admin = await prisma.user.upsert({
-        where: { email },
-        update: { role: 'ADMIN' },
-        create: { email, name: 'Administrador', passwordHash, role: 'ADMIN' }
-      });
+      // Administrador por defecto de producción. Solo se guarda el hash bcrypt, nunca la contraseña en claro.
+      console.log('ADMIN_EMAIL/ADMIN_PASSWORD no definidos; se usa el administrador por defecto.');
+      email = DEFAULT_PROD_ADMIN.email;
+      passwordHash = DEFAULT_PROD_ADMIN.passwordHash;
     }
+    // Si el administrador ya existe no se cambia su contraseña: un nuevo deploy no debe pisarla.
+    admin = await prisma.user.upsert({
+      where: { email },
+      update: { role: 'ADMIN' },
+      create: { email, name: 'Administrador', passwordHash, role: 'ADMIN' }
+    });
   } else {
     admin = await upsertUser({ name: 'Administrador', email: 'admin@test.com', password: 'admin1234', role: 'ADMIN' });
     user = await upsertUser({ name: 'Cliente de prueba', email: 'test@test.com', password: 'test1234', role: 'USER' });
