@@ -181,7 +181,9 @@ function costFromPrice(price, categoryName) {
 
 const INACTIVE_PRODUCTS = new Set(['Peluche suave 40 cm', 'Cepillo para sanitario con base']); // ejemplos de productos ocultos
 
-async function runSeed() {
+// production=true (npm run db:seed:prod): solo catálogo y un administrador real tomado de ADMIN_EMAIL y
+// ADMIN_PASSWORD; sin usuarios de prueba ni pedidos de ejemplo, y sin pisar precios ni stock ya existentes.
+async function runSeed({ production = false } = {}) {
   console.log('Seeding categorías de Punto Hogar...');
   const categories = [];
   for (const c of CATALOG) {
@@ -196,8 +198,24 @@ async function runSeed() {
   }
 
   console.log('Seeding usuarios...');
-  const admin = await upsertUser({ name: 'Administrador', email: 'admin@test.com', password: 'admin1234', role: 'ADMIN' });
-  const user = await upsertUser({ name: 'Cliente de prueba', email: 'test@test.com', password: 'test1234', role: 'USER' });
+  let admin, user;
+  if (production) {
+    const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+    const password = process.env.ADMIN_PASSWORD || '';
+    if (!email || password.length < 8) {
+      throw new Error('Define ADMIN_EMAIL y ADMIN_PASSWORD (mínimo 8 caracteres) para el seed de producción.');
+    }
+    const passwordHash = await bcrypt.hash(password, 10);
+    // Si el administrador ya existe no se cambia su contraseña: un nuevo deploy no debe pisarla.
+    admin = await prisma.user.upsert({
+      where: { email },
+      update: { role: 'ADMIN' },
+      create: { email, name: 'Administrador', passwordHash, role: 'ADMIN' }
+    });
+  } else {
+    admin = await upsertUser({ name: 'Administrador', email: 'admin@test.com', password: 'admin1234', role: 'ADMIN' });
+    user = await upsertUser({ name: 'Cliente de prueba', email: 'test@test.com', password: 'test1234', role: 'USER' });
+  }
 
   console.log('Seeding productos...');
   let total = 0;
@@ -210,7 +228,8 @@ async function runSeed() {
       const photo = fs.existsSync(path.join(__dirname, '..', 'public', 'products', `${slug}.webp`)) ? `/products/${slug}.webp` : `/images/categories/${cat.slug}.svg`;
       await prisma.product.upsert({
         where: { slug },
-        update: { name, description, price, costPrice, stock, active, categoryId: cat.id, imageUrl: photo },
+        // en producción un nuevo deploy no debe devolver precio ni stock a los valores de ejemplo
+        update: production ? {} : { name, description, price, costPrice, stock, active, categoryId: cat.id, imageUrl: photo },
         create: { name, slug, description, price, costPrice, stock, active, categoryId: cat.id, userId: admin.id, imageUrl: photo }
       });
       total++;
@@ -222,8 +241,10 @@ async function runSeed() {
   // Pedidos de ejemplo (6 meses hacia atrás) para alimentar el dashboard y el historial del cliente de prueba.
   // Son datos históricos: no descuentan inventario.
   // ------------------------------------------------------------------
-  const existingOrders = await prisma.order.count();
-  if (existingOrders > 0) {
+  const existingOrders = production ? -1 : await prisma.order.count();
+  if (production) {
+    console.log('Producción: no se generan pedidos de ejemplo.');
+  } else if (existingOrders > 0) {
     console.log(`Órdenes existentes (${existingOrders}) -> se omite generación de órdenes.`);
   } else {
     console.log('Generando pedidos de ejemplo (3 por día, últimos 6 meses)...');
@@ -318,7 +339,7 @@ async function runSeed() {
 }
 
 // Export para uso programático
-module.exports = { runSeed };
+module.exports = { runSeed, prisma };
 
 // Ejecución directa desde CLI
 if (require.main === module) {
