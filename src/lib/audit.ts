@@ -7,7 +7,7 @@ import { getSession } from './auth';
  * entity: nombre lógico de la entidad (Product, Category, User, Role, Permission, Order)
  * entityId: id afectado (si procede)
  * metadata: objeto adicional serializable (guardado como JSON)
- lolllll
+ lollllll
  */
 export async function logAudit(action: string, entity?: string, entityId?: string, metadata?: any) {
   try {
