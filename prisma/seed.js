@@ -203,15 +203,18 @@ async function runSeed({ production = false } = {}) {
     const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
     const password = process.env.ADMIN_PASSWORD || '';
     if (!email || password.length < 8) {
-      throw new Error('Define ADMIN_EMAIL y ADMIN_PASSWORD (mínimo 8 caracteres) para el seed de producción.');
+      // Sin credenciales no se crea administrador, pero el deploy sigue: se reutiliza uno existente si lo hay.
+      console.warn('Aviso: ADMIN_EMAIL/ADMIN_PASSWORD no definidos (o contraseña < 8 caracteres); no se crea administrador.');
+      admin = await prisma.user.findFirst({ where: { role: 'ADMIN' }, orderBy: { createdAt: 'asc' } });
+    } else {
+      const passwordHash = await bcrypt.hash(password, 10);
+      // Si el administrador ya existe no se cambia su contraseña: un nuevo deploy no debe pisarla.
+      admin = await prisma.user.upsert({
+        where: { email },
+        update: { role: 'ADMIN' },
+        create: { email, name: 'Administrador', passwordHash, role: 'ADMIN' }
+      });
     }
-    const passwordHash = await bcrypt.hash(password, 10);
-    // Si el administrador ya existe no se cambia su contraseña: un nuevo deploy no debe pisarla.
-    admin = await prisma.user.upsert({
-      where: { email },
-      update: { role: 'ADMIN' },
-      create: { email, name: 'Administrador', passwordHash, role: 'ADMIN' }
-    });
   } else {
     admin = await upsertUser({ name: 'Administrador', email: 'admin@test.com', password: 'admin1234', role: 'ADMIN' });
     user = await upsertUser({ name: 'Cliente de prueba', email: 'test@test.com', password: 'test1234', role: 'USER' });
@@ -230,7 +233,7 @@ async function runSeed({ production = false } = {}) {
         where: { slug },
         // en producción un nuevo deploy no debe devolver precio ni stock a los valores de ejemplo
         update: production ? {} : { name, description, price, costPrice, stock, active, categoryId: cat.id, imageUrl: photo },
-        create: { name, slug, description, price, costPrice, stock, active, categoryId: cat.id, userId: admin.id, imageUrl: photo }
+        create: { name, slug, description, price, costPrice, stock, active, categoryId: cat.id, userId: admin?.id, imageUrl: photo }
       });
       total++;
     }
